@@ -797,16 +797,16 @@ class InputEfficiencyTest(TestCase):
         pin: float,
         vout: float,
         iout: float,
-        efficiency: float,
-        overall_pass: bool,
-        fail_reason: str,
-        skipped: bool,
+        efficiency: float, 
         avg_6l: float,
         avg_7l: float,
         avg_pass_6l,  # bool or None（None 表示未配置6级规格）
         avg_pass_7l,  # bool or None（None 表示未配置7级规格）
         avg_req_6l_str: str = "",
         avg_req_7l_str: str = "",
+        overall_pass: bool,
+        fail_reason: str,
+        skipped: bool,
     ) -> dict:
         """
         组装单条测试结果（sub_result）。

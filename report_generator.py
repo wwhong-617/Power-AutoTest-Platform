@@ -215,7 +215,7 @@ def _flatten(r: dict):
             row = {
                 "序号": seq,
                 "用例名称": name_cn,
-                "测试结论": conclusion,
+                # "测试结论": conclusion,
             }
 
             # 用例直接输出的字段（字段名即 GLOBAL_COLS 列头）
@@ -528,6 +528,7 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
     prefix_cols = [
         ("序号", 6),
         ("用例名称", 14),
+        # ("测试结论", 8),
     ]
     prefix_keys = [k for k, _ in prefix_cols]   # 2项
     all_render_cols = prefix_cols + cols         # 含前缀的完整列定义
@@ -778,9 +779,9 @@ def _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s, prefix_len=2):
             c.value = v_display
             c.alignment = Alignment(horizontal="center", vertical="center")
 
-        # 合并 6级/7级能效结论列（分别找对应列索引）
-        col_c6l = col_keys.index("6级能效结论") + 1 if "6级能效结论" in col_keys else None
-        col_c7l = col_keys.index("7级能效结论") + 1 if "7级能效结论" in col_keys else None
+        # 合并 6级/7级能效结论列（分别找对应列索引，加 prefix_len 偏移）
+        col_c6l = col_keys.index("6级能效结论") + 1 + prefix_len if "6级能效结论" in col_keys else None
+        col_c7l = col_keys.index("7级能效结论") + 1 + prefix_len if "7级能效结论" in col_keys else None
 
         if col_c6l and pass_6l:
             ws.merge_cells(
