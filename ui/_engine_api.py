@@ -159,7 +159,9 @@ class EngineAPI:
                 "input_voltage_max": input_hi,
             },
             "test_conditions": test_conditions,
-            "filtered_conditions_v2": self._filtered_conditions,
+            # test_conditions_v2: 扁平列表，引擎内部调用 filter_conditions_by_case 做 per-case 过滤
+            "test_conditions_v2": list(test_conditions),
+            # filtered_conditions_v2: UI 内部用（Treeview 显示），不传入引擎
             "test_settings": test_settings,
             "test_params": test_params,
             "test_cases": test_cases_config,

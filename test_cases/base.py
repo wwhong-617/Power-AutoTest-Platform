@@ -612,7 +612,7 @@ class TestCase:
             if pwrmeter and getattr(pwrmeter, "_connected", False):
                 try:
                     pwr_ch_str = self.params.get("pwr_out_v_ch", "CH1")
-                    time.sleep(3.0)
+                    time.sleep(2)
                     measured_vout = pwrmeter.measure_voltage(channel=pwr_ch_str)
                 except Exception as e:
                     logger.warning(f"[StartupCheck] 功率计读取失败: {e}")

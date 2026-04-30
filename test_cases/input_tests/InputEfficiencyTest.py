@@ -106,11 +106,8 @@ class InputEfficiencyTest(TestCase):
         vout_spec_max: float = None,
         product_type: str = "charger",
         test_conditions: List[tuple] = None,
-        settle_time: float = None,
     ):
         self.product_type = product_type
-        # 稳定时间（_measure_load_point 等待功率计稳定用，单位秒）
-        self.settle_time = settle_time if settle_time is not None else 2.0
         self.sub_results: List[dict] = []
 
         super().__init__(
@@ -119,7 +116,6 @@ class InputEfficiencyTest(TestCase):
             params={
                 "input_voltage_lo": input_voltage_min,
                 "input_voltage_hi": input_voltage_max,
-                "settle_time": self.settle_time,
                 "product_type": product_type,
                 "test_conditions": test_conditions,
             },
@@ -157,14 +153,13 @@ class InputEfficiencyTest(TestCase):
     #  │    _do_warmup()             热机 → _step_discharge()      │
     #  ├─────────────────────────────────────────────────────────────┤
     #  │  主测试循环（每个条件执行一次）                               │
-    #  │    ① 开机自检                                              │
+    #  │    ① 开机自检（AC源配置输入电压/频率，等待输出稳定）          │
     #  │    ② 诱骗器设置协议+输出电压                                │
-    #  │    ③ 切换 AC 源到测试条件输入电压/频率，等待稳定              │
-    #  │    ④ 电子负载 ON（带载老化 20s）                           │
-    #  │    ⑤ 循环测 5 个负载点                                     │
-    #  │    ⑥ 计算 6 级/7 级平均能效                                │
-    #  │    ⑦ 填 sub_results（含结论）                              │
-    #  │    ⑧ _step_discharge()                                     │
+    #  │    ③ 电子负载 ON（带载老化 20s）                           │
+    #  │    ④ 循环测 5 个负载点（100%→10%）                        │
+    #  │    ⑤ 计算 6 级/7 级平均能效                                │
+    #  │    ⑥ 填 sub_results（含结论）                              │
+    #  │    ⑦ _step_discharge()                                     │
     #  └─────────────────────────────────────────────────────────────┘
     # =================================================================
     def execute(self, instruments: Dict[str, Any]):
@@ -203,6 +198,9 @@ class InputEfficiencyTest(TestCase):
             # 提前计算 effective iout（startup 失败时也要用）
             iout_eff = self._get_effective_iout(vin_cfg, vout_target, iout_target)
 
+            # 缓存当前条件的 vout_target，供 _measure_load_point 读取
+            self.vout_target = vout_target
+
             # ① 开机自检（直接用当前条件的输入电压/频率）
             startup_ok, _, fail_reason = self.startup_self_check(
                 instruments, vin=vin_cfg, freq=freq_cfg
@@ -237,7 +235,7 @@ class InputEfficiencyTest(TestCase):
                     )
 
             # ④ 老化 20s
-            logger.info(f"[EfficiencyTest] {output_cond} 老化 60s (Iout={iout_eff:.3f}A)...")
+            logger.info(f"[EfficiencyTest] {output_cond} 老化 20s (Iout={iout_eff:.3f}A)...")
             time.sleep(20.0)
 
             # ⑥ 循环测 5 个负载点（100% → 10%，从大到小）
@@ -251,8 +249,6 @@ class InputEfficiencyTest(TestCase):
                     input_cond=input_cond,
                     output_cond=output_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_target=iout_target,
                     vin_cfg=vin_cfg,
                 )
                 time.sleep(10.0)
@@ -299,7 +295,7 @@ class InputEfficiencyTest(TestCase):
           3. 无 PD 协议时，选任意协议中输出电压最高的
 
         Returns:
-            选中的条件 tuple（5 项），无可用条件时返回 None
+            选中的条件 dict，无可用条件时返回 None
         """
         input_voltage_min = self.input_voltage_lo
 
@@ -424,8 +420,8 @@ class InputEfficiencyTest(TestCase):
     #      · CH1 电流：set_current_range_auto(ch, max_pout/0.4/vin/0.4)
     #      · CH2 电压：set_voltage_range_auto(ch, vout)
     #      · CH2 电流：set_current_range_auto(ch, iout_set)
-    #   ③ 等待稳定 5s
-    #   ④ 读取功率计：Pin(CH1) / Vout(CH2) / Iout(CH2)
+    #   ③ 读取功率计：Pin(CH1) → 循环10次均值
+    #   ④ 读取功率计：Vout(CH2) + Iout(CH2)
     #   ⑤ 计算效率 η = (Vout × Iout) / Pin × 100%
     #   ⑥ 返回结果字典
     # =================================================================
@@ -437,8 +433,6 @@ class InputEfficiencyTest(TestCase):
         input_cond: str,
         output_cond: str,
         proto_label: str,
-        vout_target: float,
-        iout_target: float,
         vin_cfg: float = None,
     ) -> dict:
         """
@@ -453,7 +447,9 @@ class InputEfficiencyTest(TestCase):
             load_ratio:    负载比例（0.10 ~ 1.00）
             iout_set:      额定输出电流（A）
             vin_cfg:       当前测试条件输入电压（V，用于输入端范围选择）
-            其他:           仅用于日志和记录
+            input_cond:     仅用于日志
+            output_cond:    仅用于日志
+            proto_label:    仅用于日志
 
         Returns:
             dict: {load_ratio, iout_set, pin, vout, iout, efficiency}
@@ -477,7 +473,7 @@ class InputEfficiencyTest(TestCase):
             if vin_cfg:
                 pm.set_voltage_range_auto(pwr_in_ch, float(vin_cfg))
             # 根据换算的等效输入电流选择输入端电流量程
-            max_pout = float(vout_target) * float(iout_set)
+            max_pout = float(self.vout_target) * float(iout_set)
             # (Pout/效率/Vin/pf) × 1.414（电流尖峰系数）
             if vin_cfg:
                 equiv_iin = (max_pout / self._EFFICIENCY / vin_cfg / self._PF) * self._IIN_SPIKE
@@ -508,7 +504,7 @@ class InputEfficiencyTest(TestCase):
 
             # ===== 第二步: 输出端(CH2) - 设置范围 + 读Vout+Iout =====
             # 根据输出电压/电流选择输出端CH2范围
-            pm.set_voltage_range_auto(pwr_out_ch, float(vout_target))
+            pm.set_voltage_range_auto(pwr_out_ch, float(self.vout_target))
             pm.set_current_range_auto(pwr_out_ch, float(iout_set))
 
             # 第二步等待稳定 10s
@@ -524,7 +520,7 @@ class InputEfficiencyTest(TestCase):
 
         # 计算效率
         if pin > 0:
-            efficiency = round((vout * iout) / pin * 100.0, 3)
+            efficiency = round((vout * iout) / pin * 100.0, 2)
         else:
             efficiency = 0.0
 
@@ -551,7 +547,7 @@ class InputEfficiencyTest(TestCase):
         effs = [r["efficiency"] for r in load_results if r["efficiency"] > 0]
         if not effs:
             return 0.0
-        return round(sum(effs) / len(effs), 3)
+        return round(sum(effs) / len(effs), 2)
 
     def _is_spec_valid(self, spec: dict) -> bool:
         """
@@ -743,8 +739,8 @@ class InputEfficiencyTest(TestCase):
 
             # avg_req 显示值：6 级要求填入 50% 行（idx==2），7 级填入 10% 行（idx==0）
             # calc_6l/calc_7l 是小数（如 0.785），需 ×100 转百分比
-            avg_req_str_6l = f"6级能效 {calc_6l*100:.3f}%" if calc_6l is not None else ""
-            avg_req_str_7l = f"7级能效 {calc_7l*100:.3f}%" if calc_7l is not None else ""
+            avg_req_str_6l = f"6级能效 {calc_6l*100:.2f}%" if calc_6l is not None else ""
+            avg_req_str_7l = f"7级能效 {calc_7l*100:.2f}%" if calc_7l is not None else ""
 
             self.sub_results.append(
                 self._make_result(
@@ -813,6 +809,8 @@ class InputEfficiencyTest(TestCase):
             "7级平均能效(%)":   avg_7l,
             "7级能效结论":      "PASS" if avg_pass_7l is True else ("FAIL" if avg_pass_7l is False else "NA"),
             "平均能效要求(%)":  avg_req_6l_str or avg_req_7l_str,
+            "测试结论":        "SKIP" if skipped else ("PASS" if overall_pass else "FAIL"),
+            "备注":            fail_reason,
             "overall_pass":    overall_pass,
             "fail_reason":     fail_reason,
             "skipped":         skipped,

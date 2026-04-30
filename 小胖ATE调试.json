@@ -43,7 +43,7 @@
         "hv_power": 60.0,
         "lv_power": 45.0,
         "load_startup_enabled": true,
-        "load_startup_current": 0.5,
+        "load_startup_current": 1.0,
         "load_startup_voltage": 5.0,
         "specs_v2": {
             "6级能效要求_pct_enable": 1.0,

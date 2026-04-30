@@ -7,8 +7,8 @@ InputDipTest - 输入跌落测试
   验证 DUT 在输入电压从下限往上限跳变过程中，输出电压始终保持在
   Vout×90%~Vout×110% 范围内，示波器 ROLL 模式捕获完整波形。
 
-test_conditions 格式（6 元组）：
-  (vin_min, freq, proto_label, vout_target, iout_target, product_type)
+test_conditions 格式（dict）：
+  {vin, freq, proto, vout, iout}
 
 sub_result 字段：
   input_cond, condition, proto_label, vout_target, iout_target,
@@ -35,7 +35,7 @@ class InputDipTest(TestCase):
   测试步骤：
     1. 开机自检（基类 startup_self_check，不下电）
     2. 示波器 ROLL 模式（双通道配置 + 估算时基）
-    3. 诱骗器协议（charger 专用）
+    3. 诱骗器协议
     4. 电子负载 CC 模式上电
     5. 输入跳变序列（Vin_min ↔ Vin_max 循环）
     6. 示波器 STOP 冻结波形，读取 Vmax/Vmin，保存截图
@@ -71,8 +71,15 @@ class InputDipTest(TestCase):
     # ---------- __init__ ----------
     def __init__(self, test_conditions=None):
         super().__init__(name=self.name, instruments=self.instruments)
-        self.test_conditions = test_conditions or []
-        self.params = dict(self.DEFAULT_PARAMS)
+        # 合并默认参数（不覆盖引擎通过 kwargs 注入的值）
+        for k, v in self.DEFAULT_PARAMS.items():
+            self.params.setdefault(k, v)
+        # test_conditions 若未传入，则从引擎注入的 self.params 读取
+        self.test_conditions = (
+            test_conditions
+            if test_conditions is not None
+            else self.params.get("test_conditions") or []
+        )
         self.spec = {}
         self.sub_results: List[dict] = []
         self.product_type = ""
@@ -99,7 +106,7 @@ class InputDipTest(TestCase):
         步骤2：示波器 ROLL 模式
         步骤3：诱骗器协议
         步骤4：电子负载 CC 模式上电
-        步骤5：输入跳变序列（vin_max → vin_lo → vin_max，功率随电压段切换）
+        步骤5：输入跳变序列（vin_lo_ui ↔ vin_cfg，功率随电压段切换）
         步骤6：示波器 STOP，读取 Vmax/Vmin，保存波形
         步骤7：放电（下电）
         """
@@ -108,7 +115,7 @@ class InputDipTest(TestCase):
         osc     = instruments.get("OSC")
         sniffer = instruments.get("SNIFFER")
 
-        conditions = self.test_conditions or self.params.get("test_conditions") or []
+        conditions = self.test_conditions
         info(f"[IDT] execute 进入 | test_conditions 数量={len(conditions)}")
 
         if not conditions:
@@ -121,7 +128,6 @@ class InputDipTest(TestCase):
 
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = \
                 cond["vin"], cond["freq"], cond["proto"], cond["vout"], cond["iout"]
-            input_cond = f"Vin{vin_cfg}V_Freq{freq_cfg}Hz"
             cond_label = f"{proto_label}/Vout{vout_target}V/Iout{iout_target}A"
 
             vout_spec_min = round(float(vout_target) * 0.9, 3)
@@ -226,10 +232,10 @@ class InputDipTest(TestCase):
         """
         步骤2：配置示波器双通道 + ROLL 模式。
 
-        - 开启输入通道（Vin 监测）和输出通道（Vout 监测）
-        - 加 VMAX/VMIN 测量项
+        - 开启输入通道（Vin 监测）和输出通道（Vout 监测），全带宽（跌落瞬态需捕捉高频成分）
+        - VMAX/VMIN 测量项（在 auto_config_channel 后单独添加）
         - 时基根据跳变总时长估算（cycles × 2×settle_time）
-        - ROLL 模式：示波器滚动刷新，等待扫描期间持续采集
+        - ROLL 模式：示波器滚动刷新，扫描期间持续采集
         """
         if osc is None:
             return
@@ -239,12 +245,12 @@ class InputDipTest(TestCase):
             osc.set_channel_config(channel=self.osc_input_ch, coupling="DC",
                               voltage_scale=100.0,
                               voltage_offset=0.0,
-                              bandwidth_limit=True)
+                              bandwidth_limit=False)
             osc.set_channel_on(self.osc_input_ch)
             # 设置输出通道
             osc.auto_config_channel(channel=self.osc_output_ch, v_peak=vout,
                               coupling="DC",
-                              bandwidth_limit=True)
+                              bandwidth_limit=False)
             osc.set_channel_on(self.osc_output_ch)
             info(f"[IDT] 示波器通道已开启: CH{self.osc_input_ch}(输入) + CH{self.osc_output_ch}(输出)")
 
@@ -270,12 +276,20 @@ class InputDipTest(TestCase):
         入口即清屏。
         每次循环：
           下行跌落 vin_hi → vin_lo：
-            - vin_hi >= 180V → 先切降功率负载 iout_eff，再立即跌落电压
-            - vin_hi < 180V → 直接跌落
+            - vin_lo < 180V 时，先切降功率负载 iout_eff，再跌落电压
           上行恢复 vin_lo → vin_hi：
             - 先完成电压跳变
-            - vin_lo < 180V → 电压进入 HV 区后（≥180V）切回满载 iout_target
+            - vin_lo < 180V 时，电压进入 HV 区（≥180V）后切回满载 iout_target
         支持暂停/停止。
+
+        Args:
+            osc:         示波器（可 None）
+            ac:          交流源
+            eload:       电子负载
+            vin_lo:      跌落目标电压（低压下限）
+            vin_hi:      恢复目标电压（高压上限）
+            iout_target: 满载电流（A），HV 区恢复时切回
+            iout_eff:   有效电流（A），LV 降功率段使用
         """
         if eload is None:
             return
@@ -367,7 +381,7 @@ class InputDipTest(TestCase):
             "最小值":        osc_vmin,
             "输入跳变序列":  dip_sequence,
             "测试波形":      waveform,
-            "测试结论":      "SKIP" if skipped else ("PASS" if (not skipped and osc_pass) else "FAIL"),
+            "测试结论":      "SKIP" if skipped else ("PASS" if osc_pass else "FAIL"),
             "备注":          fail_reason,
             "overall_pass":  not skipped and osc_pass,
             "fail_reason":   fail_reason,

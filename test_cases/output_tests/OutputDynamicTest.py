@@ -134,7 +134,7 @@ class OutputDynamicTest(TestCase):
         dyn_ch = self.osc_dynamic_ch
         osc.set_channel_on(dyn_ch)
         osc.set_channel_coupling(dyn_ch, "DC")
-        osc.set_bandwidth_limit(dyn_ch, "ON")
+        osc.set_bandwidth_limit(dyn_ch, True)
         osc.add_measurement(dyn_ch, "VMAX")
         osc.add_measurement(dyn_ch, "VMIN")
 

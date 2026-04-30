@@ -522,17 +522,19 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
     all_cols, _ = _get_case_cols(case_name)
     cols = list(all_cols)   # [(col_name, width), ...] 按用例定义顺序
     N = len(cols)
-    col_keys = [cn for cn, _ in cols]
+    col_keys = [cn for cn, _ in cols]   # 纯数据列名（不含前缀列），17项
 
-    # ---- ���前端列：号号 + 测试用例名称（不依起各 case COLS 定义） ----
+    # ---- 前缀固定列：序号 + 用例名称 ----
     prefix_cols = [
         ("序号", 6),
         ("用例名称", 14),
     ]
-    prefix_keys = [k for k, _ in prefix_cols]
-    all_render_cols = prefix_cols + cols
-    all_render_keys = prefix_keys + col_keys
+    prefix_keys = [k for k, _ in prefix_cols]   # 2项
+    all_render_cols = prefix_cols + cols         # 含前缀的完整列定义
+    all_render_keys = prefix_keys + col_keys     # 含前缀的完整列名（19项）
     N_total = len(all_render_cols)
+
+
 
     # ---- 步骤2：列宽 ----
     for col_i, (col_name, w) in enumerate(all_render_cols, 1):
@@ -687,10 +689,12 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
     # InputEfficiencyTest：合并 6级/7级平均能效列的 5 行负载点格子
     # ============================================================
     if result.get("name") == "InputEfficiencyTest" and sub_rows:
-        _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s)
+        _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s, prefix_len=len(prefix_keys))
 
 
-def _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s):
+
+def _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s, prefix_len=2):
+
     """
     每个测试条件组（5 个负载点行）内，将 6级/7级平均能效列各自合并为 1 个格。
 
@@ -699,14 +703,18 @@ def _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s):
     """
     from openpyxl.styles import Alignment
 
-    # 找 6级 和 7级 列索引（1-based）
+    # 找 6级 和 7级 列索引（1-based，相对 all_render_keys，含前缀列）
     col_6l = None
     col_7l = None
     for ci, cn in enumerate(col_keys, 1):
+        # ci 是 col_keys 中的 1-based 位置（不含前缀列）
+        # 实际 Excel 列 = prefix_len + ci
+        abs_ci = prefix_len + ci
         if cn == "6级平均能效(%)":
-            col_6l = ci
+            col_6l = abs_ci
         if cn == "7级平均能效(%)":
-            col_7l = ci
+            col_7l = abs_ci
+
     if col_6l is None and col_7l is None:
         return
 
@@ -752,6 +760,7 @@ def _merge_efficiency_avg_cells(ws, sub_rows, col_keys, s):
                 end_row=excel_end, end_column=col_6l
             )
             c = ws.cell(excel_start, col_6l)
+
             c.value = v_display
             c.alignment = Alignment(horizontal="center", vertical="center")
 

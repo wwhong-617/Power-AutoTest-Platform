@@ -150,11 +150,11 @@ class InputNoLoadPowerTest(TestCase):
     # =================================================================
     def execute(self, instruments: Dict[str, Any]):
         ac   = instruments.get("AC_SOURCE")
-        elod = instruments.get("ELOAD")
+        eload = instruments.get("ELOAD")
         pwr  = instruments.get("POWER_METER")
         snif = instruments.get("SNIFFER")
 
-        conditions = self.test_conditions or self.params.get("test_conditions") or []
+        conditions = self.test_conditions if self.test_conditions else (self.params.get("test_conditions") or [])
         if not conditions:
             warning("[NLT] 无测试条件，跳过执行")
             return
@@ -181,7 +181,7 @@ class InputNoLoadPowerTest(TestCase):
             )
             if not startup_ok:
                 info(f"[NLT] 条件「{input_cond}」开机自检失败: {fail_reason}，跳过")
-                self._step_discharge(ac, elod)
+                self._step_discharge(ac, eload)
                 self.sub_results.append(
                     self._make_result(
                         input_cond=input_cond,
@@ -205,7 +205,7 @@ class InputNoLoadPowerTest(TestCase):
             info(f"[NLT] 诱骗器 {proto_label} {'成功' if sniffer_ok else '失败'}")
 
             # ④ 电子负载 ON/OFF（激活 DUT 进入正常工作状态，功率分段后电流）
-            self._step_eload_on_off(elod, iout_eff)
+            self._step_eload_on_off(eload, iout_eff)
 
             # ⑤ 等待稳定，功率计读取多组数据
             avg_power, min_power, max_power = self._step_measure_power(pwr)
@@ -234,7 +234,7 @@ class InputNoLoadPowerTest(TestCase):
             )
 
             # ⑦ 放电（下电）
-            self._step_discharge(ac, elod)
+            self._step_discharge(ac, eload)
 
     # =================================================================
     # 步骤方法
@@ -257,20 +257,20 @@ class InputNoLoadPowerTest(TestCase):
             except Exception as e:
                 warning(f"[NLT] 功率计电压档位设置失败: {e}")
 
-    def _step_eload_on_off(self, elod, iout: float):
+    def _step_eload_on_off(self, eload, iout: float):
         """
         步骤④：电子负载 ON（带载 DEFAULT_LOAD_ON_TIME 秒），然后 OFF。
 
         用于激活 DUT，使其进入正常工作状态。
         """
-        if elod is None:
+        if eload is None:
             return
         try:
-            elod.set_mode_cc(iout)
-            elod.input_on()
+            eload.set_mode_cc(iout)
+            eload.input_on()
             info(f"[NLT] 电子负载 ON | I={iout}A | 等待{self.load_on_time}s")
             time.sleep(self.load_on_time)
-            elod.input_off()
+            eload.input_off()
             info("[NLT] 电子负载 OFF")
         except Exception as e:
             warning(f"[NLT] 电子负载控制异常: {e}")
@@ -342,7 +342,7 @@ class InputNoLoadPowerTest(TestCase):
         hi = self.spec.get("空载功耗_W_hi", 0.15)
         return {
             "输入条件":       input_cond,
-            "南议":          proto_label,
+            "协议":          proto_label,
             "输出电压(V)":   vout_target,
             "规格下限":      lo,
             "规格上限":      hi,

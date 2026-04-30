@@ -8,13 +8,9 @@ InputVoltageRangeTest - 输入电压范围测试
   输出电压保持稳定。示波器 ROLL 模式捕获完整扫描波形，
   判定 Vmax ≤ Vout×110% 且 Vmin ≥ Vout×90%。
 
-test_conditions 格式（6 元组）：
-  (vin_min, freq, proto_label, vout_target, iout_target, product_type)
-
-sub_result 字段：
-  input_cond, condition, proto_label, vout_target, iout_target,
-  spec_min, spec_max, sweep_points, osc_vmax, osc_vmin,
-  waveform, sniffer_ok, overall_pass, fail_reason, skipped
+test_conditions 格式（List[dict]）：
+  [{"vin": float, "freq": float, "proto": str,
+    "vout": float, "iout": float, "product_type": str}, ...]
 """
 
 import time
@@ -36,7 +32,7 @@ class InputVoltageRangeTest(TestCase):
     2. 示波器 ROLL 模式（时基覆盖完整扫描时长）
     3. 诱骗器协议（charger 专用）
     4. 电子负载 CC 模式上电
-    5. 电压往返扫描：缓升（Vin_min→Vin_max）→ 缓降（Vin_max→Vin_min）
+    5. 电压往返扫描：先缓降（Vin_cfg→Vin_min），再缓升（Vin_min→Vin_cfg）
        Vac≥180V → 50Hz；Vac<180V → 60Hz；每步等待 settle_time
     6. 示波器 STOP 冻结波形，测量 Vmax/Vmin，保存波形截图
     7. 汇总判定：Vmax ≤ Vout×110% 且 Vmin ≥ Vout×90% → PASS
@@ -65,6 +61,10 @@ class InputVoltageRangeTest(TestCase):
     ]
 
     # ---------- __init__ ----------
+    # 注意：不要在这里设置 self.test_conditions！
+    # 基类 TestCase 已有 dataclass 字段，__init__ 设置会遮蔽该字段，
+    # 导致 setup() 中的缓存逻辑失效。
+    # test_conditions 由引擎通过 params 注入，在 setup() 中缓存。
     def __init__(self,
                  input_voltage_min: float = 90.0,
                  input_voltage_max: float = 264.0,
@@ -73,9 +73,8 @@ class InputVoltageRangeTest(TestCase):
                  product_type: str = "charger",
                  test_conditions: List[dict] = None,
                  settle_time: float = None):
-        self.product_type  = product_type
-        self.test_conditions = test_conditions or []
-        self.settle_time = settle_time if settle_time is not None else self.DEFAULT_SETTLE_TIME
+        self.product_type = product_type
+        self.settle_time  = settle_time if settle_time is not None else self.DEFAULT_SETTLE_TIME
         self.sub_results: List[dict] = []
 
         super().__init__(
@@ -85,8 +84,8 @@ class InputVoltageRangeTest(TestCase):
                 "input_voltage_min": input_voltage_min,
                 "input_voltage_max": input_voltage_max,
                 "settle_time":      self.settle_time,
-                "product_type":     product_type,
-                "test_conditions": test_conditions,
+                "product_type":      product_type,
+                "test_conditions":  test_conditions,
             },
             spec={
                 "vout_min": vout_spec_min,
@@ -108,15 +107,16 @@ class InputVoltageRangeTest(TestCase):
     # ---------- execute ----------
     def execute(self, instruments: Dict[str, Any]):
         """
-        主流程：逐条 test_conditions 执行，每条经 7 个步骤。
+        主流程：逐条 test_conditions 执行，每条经 8 个步骤。
 
         步骤1：开机自检（不下电）
         步骤2：示波器 ROLL 模式
         步骤3：诱骗器协议
         步骤4：电子负载 CC 模式上电
-        步骤5：电压往返扫描（缓升→缓降）
+        步骤5：电压往返扫描（先缓降 v_high→v_low，再缓升 v_low→v_high）
         步骤6：示波器 STOP，测量 Vmax/Vmin，保存波形
         步骤7：汇总判定，记录 sub_result
+        步骤8：放电（下电）
         """
         ac      = instruments.get("AC_SOURCE")
         eload   = instruments.get("ELOAD")
@@ -146,8 +146,8 @@ class InputVoltageRangeTest(TestCase):
                 self.sub_results.append(self._make_result(
                     input_cond=input_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_target=iout_eff,
+                    vout_target=round(vout_target, 3),
+                    iout_target=round(iout_eff, 3),
                     voltage_range=f"{int(self.vin_lo_ui)}~{int(vin_cfg)}",
                     spec_min=spec_min,
                     spec_max=spec_max,
@@ -164,7 +164,7 @@ class InputVoltageRangeTest(TestCase):
             # ---- 步骤2：示波器 ROLL 模式 ----
             sweep_pts = self._get_voltage_sweep(float(vin_cfg), self.vin_lo_ui)
             sweep_dur = len(sweep_pts) * self.settle_time
-            self._step_setup_osc(osc, vout_target, sweep_dur)
+            self._step_setup_osc(osc, vout_target, sweep_dur, vin_cfg=vin_cfg)
 
             # ---- 步骤3：诱骗器协议 ----
             sniffer_ok = self._step_setup_sniffer(sniffer, proto_label, vout_target, iout_eff)
@@ -191,8 +191,8 @@ class InputVoltageRangeTest(TestCase):
             self.sub_results.append(self._make_result(
                 input_cond=input_cond,
                 proto_label=proto_label,
-                vout_target=vout_target,
-                iout_target=iout_eff,
+                vout_target=round(vout_target, 3),
+                iout_target=round(iout_eff, 3),
                 voltage_range=f"{int(self.vin_lo_ui)}~{int(vin_cfg)}",
                 spec_min=spec_min,
                 spec_max=spec_max,
@@ -210,22 +210,32 @@ class InputVoltageRangeTest(TestCase):
 
     # ---------- 步骤方法 ----------
 
-    def _step_setup_osc(self, osc, vout: float, sweep_duration_s: float):
+    def _step_setup_osc(self, osc, vout: float, sweep_duration_s: float, vin_cfg: float = None):
         """
         步骤2：配置示波器 ROLL 模式。
 
-        - 输入通道 DC 耦合，衰减 attn_in
-        - 输出通道 DC 耦合，直接量程 Vout/4
+        - 输入通道：测 AC 输入电压（正弦波，offset=0），用 auto_config_channel 自动量程
+        - 输出通道：测 DUT 输出电压，用 auto_config_channel 自动量程
+        - 带宽限制：输入通道限 25MHz（滤 DUT 开关噪声，不影响慢变扫描信号）
         - 时基 = sweep_duration / 10（配合扫描时间常数）
-        - ROLL 模式下示波器持续刷新，等待扫描期间持续采集
+        - ROLL 模式：示波器持续刷新，等待扫描期间持续采集
+
+        Args:
+            vin_cfg: 本次扫描的最高条件电压（V），用于计算输入通道量程峰值
         """
         if osc is None:
             warning("[IVRT] 示波器未连接，跳过")
             return
-        osc.set_channel_config(channel=self.osc_input_ch, coupling="DC",
-                              voltage_scale=100.0,
-                              voltage_offset=0.0,
-                              bandwidth_limit=True)
+
+        # 输入通道测 AC 输入电压，v_peak = vin_cfg × √2（扫描时最高电压，确保不削顶）
+        # vin_cfg 为 None 时退化为最保守估算（使用 UI 设定的最低电压）
+        if vin_cfg is None:
+            vin_cfg = self.vin_lo_ui
+        vin_peak = vin_cfg * 1.414 * 2
+        osc.auto_config_channel(channel=self.osc_input_ch, v_peak=vin_peak,
+                              coupling="DC",
+                              bandwidth_limit=True,
+                              offset=0.0)   # 正弦波中心在 0V
         osc.set_channel_on(self.osc_input_ch)
 
         osc.auto_config_channel(channel=self.osc_output_ch, v_peak=vout,
@@ -238,19 +248,18 @@ class InputVoltageRangeTest(TestCase):
         time.sleep(0.3)
         osc.set_timebase(timebase)
         time.sleep(0.5)
-        info(f"[IVRT] 示波器 ROLL | 时基={timebase:.1f}s/div")
+        info(f"[IVRT] 示波器 ROLL | 时基={timebase:.1f}s/div | Vin_peak≈{vin_peak:.1f}V")
 
     def _step_voltage_sweep(self, osc, ac, eload, sweep_points: list,
                              iout_target: float, vout_target: float):
         """
-        步骤5：输入电压往返扫描（缓升→缓降），功率随电压段切换。
+        步骤5：输入电压往返扫描。
 
-        - 示波器清屏，开始 ROLL 采集
-        - 按 sweep_points 顺序（先缓升 Vin_min→Vin_max，再缓降 Vin_max→Vin_min）
-        - Vac≥180V → 50Hz；Vac<180V → 60Hz；eload 切满载
-        - Vac<180V → 60Hz；eload 切降功率 iout_eff
-        - 每步等待 settle_time 稳定
-        - 支持暂停/停止
+        sweep_points 顺序：先缓降（v_high→v_low），再缓升（v_low→v_high）。
+        每步根据当前电压判定频率（≥180V→50Hz，<180V→60Hz）。
+        功率随电压段自动切换（≥180V 满载，<180V 降功率）。
+        每步等待 settle_time 稳定。
+        支持暂停/停止。
         """
         if osc is None:
             warning("[IVRT] 示波器未连接，跳过清屏")
