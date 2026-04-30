@@ -53,6 +53,9 @@ class OutputDynamicTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",   16),
         ("协议",       12),
         ("输出电压(V)", 13),
@@ -62,7 +65,6 @@ class OutputDynamicTest(TestCase):
         ("规格下限",    10),
         ("最大值",      10),
         ("最小值",      10),
-        ("测试结论",    11),
         ("测试波形",    18),
         ("备注",       32),
     ]
@@ -154,9 +156,6 @@ class OutputDynamicTest(TestCase):
         ch = self.osc_dynamic_ch
 
         for cond_idx, cond in enumerate(conditions):
-            if len(cond) < 5:
-                continue
-
             # 解析测试条件 dict
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = \
                 cond["vin"], cond["freq"], cond["proto"], cond["vout"], cond["iout"]
@@ -183,8 +182,8 @@ class OutputDynamicTest(TestCase):
                         self.sub_results.append(self._make_result(
                             input_cond=input_cond,
                             proto_label=proto_label,
-                            vout_target=vout_target,
-                            iout_eff=iout_eff,
+                            vout_target=round(vout_target, 3),
+                            iout_eff=round(iout_eff, 3),
                             scenario=scenario,
                             scenario_index=seq_idx + 1,
                             spec_hi=0.0,
@@ -306,7 +305,14 @@ class OutputDynamicTest(TestCase):
             period = 1.0 / max(freq_hz, 0.001)
             time_per_div = period * 10.0 / 8.0
             osc.set_timebase(time_per_div)
-            time.sleep(1)
+            elapsed = 0.0
+            while elapsed < 1.0:
+                if self.is_stop_requested():
+                    break
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
             osc.set_trigger_mode("AUTO")
             osc.set_trigger_source(f"CHAN{ch}")
             osc.set_trigger_level(vout_v)
@@ -317,7 +323,14 @@ class OutputDynamicTest(TestCase):
         if eload:
             eload.set_mode_cc(i_low)
             eload.input_on()
-            time.sleep(1.0)
+            elapsed = 0.0
+            while elapsed < 1.0:
+                if self.is_stop_requested():
+                    break
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
 
             eload.set_dynamic_mode(
                 i_high=i_high,
@@ -330,7 +343,14 @@ class OutputDynamicTest(TestCase):
             )
             eload.run_dynamic()
 
-        time.sleep(self.STEP_WAIT_S)
+        elapsed = 0.0
+        while elapsed < self.STEP_WAIT_S:
+            if self.is_stop_requested():
+                break
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
 
         # 测量：冻结波形 → 读 VMAX/VMIN → 保存 → 恢复采集
         v_max = 0.0
@@ -362,8 +382,8 @@ class OutputDynamicTest(TestCase):
         self.sub_results.append(self._make_result(
             input_cond=input_cond,
             proto_label=proto_label,
-            vout_target=vout_target,
-            iout_eff=iout_eff,
+            vout_target=round(vout_target, 3),
+            iout_eff=round(iout_eff, 3),
             scenario=f"{scenario}{scenario_index}",
             scenario_index=scenario_index,
             spec_hi=spec_hi,

@@ -57,6 +57,9 @@ class OutputScpProtectTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",          16),
         ("协议",              12),
         ("输出电压(V)",       14),
@@ -66,7 +69,6 @@ class OutputScpProtectTest(TestCase):
         ("短路后电压(V)",     14),
         ("短路恢复后电压(V)", 18),
         ("短路恢复情况",       16),
-        ("测试结论",           11),
         ("测试波形",           18),
         ("备注",              28),
     ]
@@ -120,6 +122,7 @@ class OutputScpProtectTest(TestCase):
                 "vout_spec_max":    vout_spec_max,
                 "product_type":     product_type,
                 "settle_time":      self.settle_time,
+                "test_conditions":   test_conditions,
             },
         )
 
@@ -154,9 +157,6 @@ class OutputScpProtectTest(TestCase):
         load_ratios = [1.0, 0.5, 0.0]   # 100% / 50% / 0%
 
         for cond in self.test_conditions:
-            if len(cond) < 5:
-                continue
-
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = (
                 cond["vin"], cond["freq"], cond["proto"], cond["vout"], cond["iout"]
             )
@@ -167,7 +167,14 @@ class OutputScpProtectTest(TestCase):
                 # 负载点之间独立上下电
                 if idx > 0:
                     self._step_discharge(ac, eload)
-                    time.sleep(2.0)
+                    elapsed = 0.0
+                    while elapsed < 2.0:
+                        if self.is_stop_requested():
+                            return
+                        while self.is_pause_requested() and not self.is_stop_requested():
+                            time.sleep(0.2)
+                        time.sleep(0.2)
+                        elapsed += 0.2
                 self._test_single_loadpoint(
                     instruments,
                     vin_cfg, freq_cfg, proto_label,
@@ -221,7 +228,7 @@ class OutputScpProtectTest(TestCase):
             self._step_discharge(ac, eload)
             self._add_result(
                 input_cond=input_cond, proto_label=proto_label,
-                vout_target=vout_target, iout_target=iout_eff,
+                vout_target=round(vout_target, 3), iout_target=round(iout_eff, 3),
                 load_ratio=load_label, protect_mode="",
                 vout_short=0.0, vout_after_short=0.0,
                 recover_status="SKIP",
@@ -231,7 +238,14 @@ class OutputScpProtectTest(TestCase):
 
         # --- 步骤2：诱骗器协议配置 ---
         self._step_setup_sniffer(snf, proto_label, vout_target, iout_eff)
-        time.sleep(2.0)
+        elapsed = 0.0
+        while elapsed < 2.0:
+            if self.is_stop_requested():
+                return
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
 
         # --- 步骤3：示波器配置 SINGLE 触发（NORMAL 模式 / NEG 边沿）---
         self._osc_arm_short_trigger(osc, self.osc_output_ch, vout_target)
@@ -241,15 +255,36 @@ class OutputScpProtectTest(TestCase):
         if eload:
             eload.set_mode_cc(round(i_set_eff, 3))
             eload.input_on()
-        time.sleep(1.0)
+        elapsed = 0.0
+        while elapsed < 1.0:
+            if self.is_stop_requested():
+                return
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
 
         # 示波器等待 SINGLE 触发，电子负载随后短路
         if osc:
             osc.set_single_trigger()
-            time.sleep(3.0)
+            elapsed = 0.0
+            while elapsed < 3.0:
+                if self.is_stop_requested():
+                    return
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
         if eload:
             eload.short_on()
-            time.sleep(self.SHORT_ON_HOLD)
+            elapsed = 0.0
+            while elapsed < self.SHORT_ON_HOLD:
+                if self.is_stop_requested():
+                    return
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
 
         # --- 步骤5：等待示波器触发完成，测量短路中电压 ---
         self._osc_wait_trigger_done(osc)
@@ -275,7 +310,14 @@ class OutputScpProtectTest(TestCase):
                 warning(f"[SCP] 示波器截图失败: {e}")
 
         # --- 步骤7：等待后测量短路解除后电压 ---
-        time.sleep(self.SHORT_OFF_HOLD)
+        elapsed = 0.0
+        while elapsed < self.SHORT_OFF_HOLD:
+            if self.is_stop_requested():
+                return
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
         vout_after_short = self._measure_vout_by_eload(eload, vout_target)
         info(f"[SCP] {cond_label} {load_label} "
              f"短路解除后 Vout={vout_after_short:.3f}V")
@@ -294,8 +336,8 @@ class OutputScpProtectTest(TestCase):
         self._add_result(
             input_cond=input_cond,
             proto_label=proto_label,
-            vout_target=vout_target,
-            iout_target=iout_eff,
+            vout_target=round(vout_target, 3),
+            iout_target=round(iout_eff, 3),
             load_ratio=load_label,
             protect_mode=protect_mode_ui,
             vout_short=round(vout_during_short, 3),
@@ -342,7 +384,14 @@ class OutputScpProtectTest(TestCase):
         # 重新诱骗协议，模拟真实恢复场景
         if snf:
             snf.set_protocol(proto_label, vout_target, 0.1)
-        time.sleep(self.RECOVER_WAIT)
+        elapsed = 0.0
+        while elapsed < self.RECOVER_WAIT:
+            if self.is_stop_requested():
+                return "SKIP", False, "用户停止"
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
         vout_recover = self._measure_vout_by_eload(eload, vout_default)
         info(f"[SCP] 恢复电压 Vout={vout_recover:.3f}V"
              f"（基准={vout_default:.3f}V）")

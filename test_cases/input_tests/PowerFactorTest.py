@@ -27,6 +27,9 @@ class PowerFactorTest(TestCase):
 
     # ---------- 报告列定义 ----------
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",    16),
         ("协议",        14),
         ("输出电压(V)", 14),
@@ -34,7 +37,6 @@ class PowerFactorTest(TestCase):
         ("负载点",       8),
         ("功率因数",    12),
         ("规格下限",    11),
-        ("测试结论",    11),
         ("备注",       28),
     ]
 

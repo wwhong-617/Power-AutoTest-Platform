@@ -64,6 +64,9 @@ class OutputOcpProtectTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",      16),
         ("协议",          12),
         ("输出电压(V)",   14),
@@ -73,7 +76,6 @@ class OutputOcpProtectTest(TestCase):
         ("规格下限(A)",   12),
         ("过流保护点(A)", 14),
         ("短路恢复情况",   16),
-        ("测试结论",       11),
         ("测试波形",       18),
         ("备注",          28),
     ]
@@ -122,6 +124,7 @@ class OutputOcpProtectTest(TestCase):
                 "vout_spec_max":    vout_spec_max,
                 "product_type":     product_type,
                 "settle_time":      self.settle_time,
+                "test_conditions":  test_conditions,
             },
         )
 
@@ -181,7 +184,7 @@ class OutputOcpProtectTest(TestCase):
                 self._step_discharge(ac, eload)
                 self._add_result(
                     input_cond=input_cond, proto_label=proto_label,
-                    vout_target=vout_target, iout_eff=iout_eff,
+                    vout_target=round(vout_target, 3), iout_eff=round(iout_eff, 3),
                     protect_mode="", spec_lo=0.0, spec_hi=0.0,
                     ocp_point=0.0, recover_status="SKIP",
                     test_pass=False, fail_reason=fail_reason, waveform="",
@@ -246,7 +249,7 @@ class OutputOcpProtectTest(TestCase):
             protect_mode_ui = "锁死" if latch_on else ("自恢复" if self_on else "未知")
             self._add_result(
                 input_cond=input_cond, proto_label=proto_label,
-                vout_target=vout_target, iout_eff=iout_eff,
+                vout_target=round(vout_target, 3), iout_eff=round(iout_eff, 3),
                 protect_mode=protect_mode_ui,
                 spec_lo=spec_lo, spec_hi=spec_hi,
                 ocp_point=ocp_point,
@@ -312,20 +315,39 @@ class OutputOcpProtectTest(TestCase):
         """
         current = float(iout_eff)
         while current <= i_max + 1e-9:
+            if self.is_stop_requested():
+                return False, None, 0.0
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
             if eload:
                 try:
                     eload.set_mode_cc(round(current, 3))
                 except Exception as e:
                     warning(f"[OCP] set_mode_cc({current:.3f}A) 异常: {e}，提前终止扫描")
                     return False, None, 0.0
-            time.sleep(self.LOAD_RAMP_HOLD)
+
+            elapsed = 0.0
+            while elapsed < self.LOAD_RAMP_HOLD:
+                if self.is_stop_requested():
+                    return False, None, 0.0
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
 
             vout = self._measure_vout(pm, vout_target)
             info(f"[OCP] {cond_label} I={current:.3f}A Vout={vout:.3f}V")
 
             if vout < float(vout_target) * self.VOUT_DROP_RATIO:
                 info(f"[OCP] OCP 触发！I={current:.3f}A Vout={vout:.3f}V，等待10s观察保护状态")
-                time.sleep(10.0)
+                elapsed = 0.0
+                while elapsed < 10.0:
+                    if self.is_stop_requested():
+                        return False, None, 0.0
+                    while self.is_pause_requested() and not self.is_stop_requested():
+                        time.sleep(0.2)
+                    time.sleep(0.2)
+                    elapsed += 0.2
                 return True, round(current, 3), round(vout, 3)
 
             current += self.LOAD_RAMP_STEP
@@ -370,10 +392,17 @@ class OutputOcpProtectTest(TestCase):
         latch_on = self.protection_logic.get("输出过流保护_mode", "") == "latch"
         self_on  = self.protection_logic.get("输出过流保护_mode", "") == "self"
 
-        # 恢复第1步：切小电流，等待稳定
+        # 恢复第1步：切小电流，等待稳定（支持暂停/停止）
         if eload:
             eload.set_mode_cc(self.load_startup_current)
-        time.sleep(self.RECOVER_WAIT)
+        elapsed = 0.0
+        while elapsed < self.RECOVER_WAIT:
+            if self.is_stop_requested():
+                return "SKIP", False, "用户停止", spec_lo, spec_hi
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
         vout_recover = self._measure_vout(pm, vout_default)
         info(f"[OCP] 恢复电压 Vout={vout_recover:.3f}V"
              f"（基准={vout_default:.3f}V）")
@@ -395,7 +424,14 @@ class OutputOcpProtectTest(TestCase):
             self._step_setup_sniffer(snf, proto_label, vout_target, iout_eff)
             if eload:
                 eload.set_mode_cc(float(iout_eff))
-            time.sleep(10.0)
+            elapsed = 0.0
+            while elapsed < 10.0:
+                if self.is_stop_requested():
+                    return "SKIP", False, "用户停止", spec_lo, spec_hi
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
             vout_final = self._measure_vout(pm, vout_target)
             passed = (vout_final >= float(vout_target) * self.SELF_RECOVER_RATIO)
             fail_reason = "" if passed else (

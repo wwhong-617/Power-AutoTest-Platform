@@ -52,6 +52,9 @@ class OutputRippleInputScanTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",         16),
         ("协议",             12),
         ("输出电压(V)",      13),
@@ -59,7 +62,6 @@ class OutputRippleInputScanTest(TestCase):
         ("缓调范围&步进",   25),
         ("纹波实测数据(mV)", 16),
         ("纹波要求",         12),
-        ("测试结论",          11),
         ("测试波形",          18),
         ("备注",             32),
     ]
@@ -169,9 +171,6 @@ class OutputRippleInputScanTest(TestCase):
         )
 
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = (
                 cond["vin"], cond["freq"], cond["proto"],
                 cond["vout"], cond["iout"],
@@ -198,8 +197,8 @@ class OutputRippleInputScanTest(TestCase):
                 self.sub_results.append(self._make_result(
                     input_cond=f"{int(vin_lo_ui)}~{int(vin_cfg)}V",
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_eff=iout_eff,
+                    vout_target=round(vout_target, 3),
+                    iout_eff=round(iout_eff, 3),
                     test_vin_freq="N/A",
                     ripple_mv=0.0,
                     ripple_spec=ripple_spec,
@@ -251,7 +250,7 @@ class OutputRippleInputScanTest(TestCase):
 
         电压分段规则：Vin ≥ 180V → freq=50Hz；Vin < 180V → freq=60Hz。
         负载分段规则：HV 段用 iout_target，LV 段用 iout_eff，
-                      HV↔LV 跨边界时分 5 步渐进切换。
+                      HV↔LV 跨边界时分 10 步渐进切换。
 
         示波器全程 ROLL 滚动，扫描结束后 STOP，读取峰峰值。
 
@@ -273,7 +272,7 @@ class OutputRippleInputScanTest(TestCase):
         down_vals = make_seq(vin_cfg, vin_lo,  step, True)
         up_vals   = make_seq(vin_lo,  vin_cfg, step, False)
         total_s   = (len(down_vals) + len(up_vals)) * 1.0
-        time_per_div = total_s / 8.0
+        time_per_div = total_s / 4.0
 
         if osc:
             osc.set_timebase_mode("ROLL")
@@ -306,18 +305,18 @@ class OutputRippleInputScanTest(TestCase):
                     and prev_vin >= 180 > vin
                     and not hv_crossed
                     and prev_iout is not None):
-                for s in range(1, 6):
-                    eload.set_mode_cc(prev_iout + (i_target - prev_iout) * s / 5.0)
-                    time.sleep(0.5)
+                for s in range(1, 10):
+                    eload.set_mode_cc(prev_iout + (i_target - prev_iout) * s / 10.0)
+                    time.sleep(2)
                 hv_crossed = True
             # LV→HV 上行跨越 180V
             elif (prev_vin is not None
-                    and prev_vin <= 180 < vin
+                    and prev_vin < 180 <= vin
                     and not lv_crossed
                     and prev_iout is not None):
-                for s in range(1, 6):
-                    eload.set_mode_cc(prev_iout + (i_target - prev_iout) * s / 5.0)
-                    time.sleep(0.5)
+                for s in range(1, 10):
+                    eload.set_mode_cc(prev_iout + (i_target - prev_iout) * s / 10.0)
+                    time.sleep(2)
                 lv_crossed = True
             else:
                 eload.set_mode_cc(i_target)
@@ -330,6 +329,10 @@ class OutputRippleInputScanTest(TestCase):
         info(f"[RippleInputScan] 下行：{int(vin_cfg)}V → {int(vin_lo)}V")
         prev_vin = None
         for vin in down_vals:
+            if self.is_stop_requested():
+                break
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
             freq = set_vin(vin)
             i_log = set_eload_smooth(vin)
             prev_vin = vin
@@ -338,8 +341,13 @@ class OutputRippleInputScanTest(TestCase):
 
         # ---- 上行 vin_lo → vin_cfg ----
         info(f"[RippleInputScan] 上行：{int(vin_lo)}V → {int(vin_cfg)}V")
+        hv_crossed, lv_crossed = False, False
         prev_vin = None
         for vin in up_vals:
+            if self.is_stop_requested():
+                break
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
             freq = set_vin(vin)
             i_log = set_eload_smooth(vin)
             prev_vin = vin
@@ -375,8 +383,8 @@ class OutputRippleInputScanTest(TestCase):
         self.sub_results.append(self._make_result(
             input_cond=f"{int(vin_lo)}~{int(vin_cfg)}V",
             proto_label=proto_label,
-            vout_target=vout_target,
-            iout_eff=iout_eff,
+            vout_target=round(vout_target, 3),
+            iout_eff=round(iout_eff, 3),
             test_vin_freq=f"{int(vin_cfg)}V→{int(vin_lo)}V→{int(vin_cfg)}V/{int(step)}V",
             ripple_mv=ripple_mv,
             ripple_spec=ripple_spec,

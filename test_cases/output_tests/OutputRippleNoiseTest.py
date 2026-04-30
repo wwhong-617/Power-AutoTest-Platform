@@ -51,6 +51,9 @@ class OutputRippleNoiseTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",          16),
         ("协议",              12),
         ("输出电压(V)",       13),
@@ -58,7 +61,6 @@ class OutputRippleNoiseTest(TestCase):
         ("负载点",             9),
         ("纹波要求",          12),
         ("纹波实测值(mV)",   16),
-        ("测试结论",           11),
         ("测试波形",           18),
         ("备注",              32),
     ]
@@ -149,9 +151,6 @@ class OutputRippleNoiseTest(TestCase):
         ripple_spec = self.spec.get("纹波要求_mV_hi", 100.0)
 
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = (
                 cond["vin"], cond["freq"], cond["proto"],
                 cond["vout"], cond["iout"],
@@ -179,8 +178,8 @@ class OutputRippleNoiseTest(TestCase):
                     self.sub_results.append(self._make_result(
                         input_cond=input_cond,
                         proto_label=proto_label,
-                        vout_target=vout_target,
-                        iout_target=iout_eff,
+                        vout_target=round(vout_target, 3),
+                        iout_target=round(iout_eff, 3),
                         load_pct=pct,
                         ripple_spec=ripple_spec,
                         ripple_mv=0.0,
@@ -237,8 +236,8 @@ class OutputRippleNoiseTest(TestCase):
                 self.sub_results.append(self._make_result(
                     input_cond=input_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_target=iout_eff,
+                    vout_target=round(vout_target, 3),
+                    iout_target=round(iout_eff, 3),
                     load_pct=pct,
                     ripple_spec=ripple_spec,
                     ripple_mv=ripple_mv,

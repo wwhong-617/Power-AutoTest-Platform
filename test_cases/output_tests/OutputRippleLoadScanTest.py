@@ -54,6 +54,9 @@ class OutputRippleLoadScanTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",          16),
         ("协议",              12),
         ("输出电压(V)",       13),
@@ -61,7 +64,6 @@ class OutputRippleLoadScanTest(TestCase):
         ("缓调范围&步进",    25),
         ("纹波实测数据(mV)", 16),
         ("纹波要求",          12),
-        ("测试结论",           11),
         ("测试波形",           18),
         ("备注",              32),
     ]
@@ -156,9 +158,6 @@ class OutputRippleLoadScanTest(TestCase):
         ripple_spec = self.spec.get("纹波要求_mV_hi", 100.0)
 
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = (
                 cond["vin"], cond["freq"], cond["proto"],
                 cond["vout"], cond["iout"],
@@ -185,8 +184,8 @@ class OutputRippleLoadScanTest(TestCase):
                 self.sub_results.append(self._make_result(
                     input_cond=input_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_eff=iout_eff,
+                    vout_target=round(vout_target, 3),
+                    iout_eff=round(iout_eff, 3),
                     test_current="N/A",
                     ripple_mv=0.0,
                     ripple_spec=ripple_spec,
@@ -273,14 +272,22 @@ class OutputRippleLoadScanTest(TestCase):
         info(f"[RippleLoadScan] 扫描开始：I={i_rated}A，"
              f"步进={step}A，每步={self.STEP_WAIT_S}s")
 
-        # ---- 阶段1：下降 i_rated → 0A ----
+        # ---- 阶段1：下降 i_rated → 0A（支持暂停/停止）----
         for i_load in down:
+            if self.is_stop_requested():
+                break
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
             if eload:
                 eload.set_mode_cc(i_load)
             time.sleep(self.STEP_WAIT_S)
 
-        # ---- 阶段2：上升 0A → i_rated ----
+        # ---- 阶段2：上升 0A → i_rated（支持暂停/停止）----
         for i_load in up:
+            if self.is_stop_requested():
+                break
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
             if eload:
                 eload.set_mode_cc(i_load)
             time.sleep(self.STEP_WAIT_S)
@@ -314,8 +321,8 @@ class OutputRippleLoadScanTest(TestCase):
         self.sub_results.append(self._make_result(
             input_cond=input_cond,
             proto_label=proto_label,
-            vout_target=vout_target,
-            iout_eff=iout_eff,
+            vout_target=round(vout_target, 3),
+            iout_eff=round(iout_eff, 3),
             test_current=f"0~{i_rated}A/{step}A",
             ripple_mv=ripple_mv,
             ripple_spec=ripple_spec,
@@ -371,7 +378,7 @@ class OutputRippleLoadScanTest(TestCase):
             return None
         base_dir = self._get_waveform_dir()
         fname = (f"{self.name}_{input_cond}_{proto_label}"
-                 f"_Vout{vout}V_Iout{iout}A_I{test_current:.1f}A.png")
+                 f"_Vout{vout}V_Iout{iout}A_I{test_current}.png")
         try:
             return osc.save_screenshot(os.path.join(base_dir, fname))
         except Exception:

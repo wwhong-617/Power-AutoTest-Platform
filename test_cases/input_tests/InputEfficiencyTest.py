@@ -75,6 +75,9 @@ class InputEfficiencyTest(TestCase):
 
     # ---------- 报告列定义 ----------
     # 顺序即 Excel 列顺序，按 COLS 定义顺序渲染所有列
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列），
+    # 避免与 _merge_efficiency_avg_cells 的 prefix_len 计算冲突。
     COLS = [
         ("输入条件",          16),
         ("协议",              14),
@@ -91,7 +94,7 @@ class InputEfficiencyTest(TestCase):
         ("7级平均能效(%)",    15),
         ("7级能效结论",       12),
         ("平均能效要求(%)",   18),
-        ("测试结论",           11),
+        ("测试结论",       12),
         ("备注",              28),
     ]
 
@@ -295,10 +298,11 @@ class InputEfficiencyTest(TestCase):
         """
         input_voltage_min = self.input_voltage_lo
 
-        # 步骤 1：输入电压下限筛选
+        # 步骤 1：输入电压下限筛选（len(dict) 无法判断字段完整性，改用字段非 None 检查）
         valid_conds = [
             c for c in conditions
-            if len(c) >= 4 and float(c.get("vin", 0)) >= input_voltage_min
+            if c.get("vin") is not None and c.get("vout") is not None
+               and float(c.get("vin", 0)) >= input_voltage_min
         ]
         if not valid_conds:
             valid_conds = conditions
@@ -477,14 +481,25 @@ class InputEfficiencyTest(TestCase):
                 equiv_iin = 0.0
             pm.set_current_range_auto(pwr_in_ch, equiv_iin)
 
-            # 第一步等待稳定 10s
+            # 第一步等待稳定 10s（支持暂停/停止）
             stable_sec = 10.0
             logger.info(f"[EfficiencyTest] 第一步等待稳定 {stable_sec}s ...")
-            time.sleep(stable_sec)
+            elapsed = 0.0
+            while elapsed < stable_sec:
+                if self.is_stop_requested():
+                    break
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
 
-            # 读取输入功率(Pin) — 循环10次求平均
+            # 读取输入功率(Pin) — 循环10次求平均（支持暂停/停止）
             pin_samples = []
             for _ in range(10):
+                if self.is_stop_requested():
+                    break
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
                 try:
                     p = abs(pm.measure_power(channel=pwr_in_ch))
                     pin_samples.append(p)
@@ -503,16 +518,24 @@ class InputEfficiencyTest(TestCase):
             pm.set_voltage_range_auto(pwr_out_ch, float(self.vout_target))
             pm.set_current_range_auto(pwr_out_ch, float(iout_set))
 
-            # 第二步等待稳定 10s
-            time.sleep(10.0)
+            # 第二步等待稳定 10s（支持暂停/停止）
+            elapsed = 0.0
+            while elapsed < 10.0:
+                if self.is_stop_requested():
+                    break
+                while self.is_pause_requested() and not self.is_stop_requested():
+                    time.sleep(0.2)
+                time.sleep(0.2)
+                elapsed += 0.2
 
-            # 读取输出电压和电流
-            try:
-                vout = abs(pm.measure_voltage(channel=pwr_out_ch))
-                iout = abs(pm.measure_current(channel=pwr_out_ch))
-                logger.info(f"[EfficiencyTest] 负载点 {load_ratio*100:.0f}% | Vout={vout:.3f}V Iout={iout:.3f}A [CH2 输出端]")
-            except Exception as e:
-                logger.warning(f"[EfficiencyTest] Vout/Iout 读取失败: {e}")
+            # 读取输出电压和电流（支持暂停/停止）
+            if not self.is_stop_requested():
+                try:
+                    vout = abs(pm.measure_voltage(channel=pwr_out_ch))
+                    iout = abs(pm.measure_current(channel=pwr_out_ch))
+                    logger.info(f"[EfficiencyTest] 负载点 {load_ratio*100:.0f}% | Vout={vout:.3f}V Iout={iout:.3f}A [CH2 输出端]")
+                except Exception as e:
+                    logger.warning(f"[EfficiencyTest] Vout/Iout 读取失败: {e}")
 
         # 计算效率
         if pin > 0:
@@ -805,7 +828,7 @@ class InputEfficiencyTest(TestCase):
             "7级平均能效(%)":   avg_7l,
             "7级能效结论":      "PASS" if avg_pass_7l is True else ("FAIL" if avg_pass_7l is False else "NA"),
             "平均能效要求(%)":  avg_req_6l_str or avg_req_7l_str,
-            "测试结论":        "SKIP" if skipped else ("PASS" if overall_pass else "FAIL"),
+            "测试结论":        "SKIP" if skipped else ("PASS" if overall_pass is True else ("NA" if overall_pass is None else "FAIL")),
             "备注":            fail_reason,
             "overall_pass":    overall_pass,
             "fail_reason":     fail_reason,

@@ -55,6 +55,9 @@ class OutputPowerOnOffTest(TestCase):
 
     # 报告列定义（序号/用例名称由 report_generator._flatten() 自动注入）
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
         ("输入条件",   16),
         ("协议",       12),
         ("输出电压(V)", 13),
@@ -65,7 +68,6 @@ class OutputPowerOnOffTest(TestCase):
         ("过冲(%)",   12),
         ("负冲(%)",   12),
         ("测试波形",    18),
-        ("测试结论",    11),
         ("备注",       28),
     ]
 
@@ -150,9 +152,6 @@ class OutputPowerOnOffTest(TestCase):
         spec_max = self.spec.get("开关机过冲_pct_hi", 20.0)
 
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = (
                 cond["vin"], cond["freq"], cond["proto"],
                 cond["vout"], cond["iout"],
@@ -398,8 +397,8 @@ class OutputPowerOnOffTest(TestCase):
         self.sub_results.append(self._make_result(
             input_cond=input_cond,
             proto_label=proto_label,
-            vout_target=vout_target,
-            iout_eff=iout_eff,
+            vout_target=round(vout_target, 3),
+            iout_eff=round(iout_eff, 3),
             scene="开机",
             spec_max=spec_max,
             ov_pct=round(ov, 3),
@@ -418,8 +417,8 @@ class OutputPowerOnOffTest(TestCase):
         self.sub_results.append(self._make_result(
             input_cond=input_cond,
             proto_label=proto_label,
-            vout_target=vout_target,
-            iout_eff=iout_eff,
+            vout_target=round(vout_target, 3),
+            iout_eff=round(iout_eff, 3),
             scene="关机",
             spec_max=spec_max,
             ov_pct=round(ov, 3),
@@ -439,8 +438,8 @@ class OutputPowerOnOffTest(TestCase):
             self.sub_results.append(self._make_result(
                 input_cond=input_cond,
                 proto_label=proto_label,
-                vout_target=vout_target,
-                iout_eff=iout_eff,
+                vout_target=round(vout_target, 3),
+                iout_eff=round(iout_eff, 3),
                 scene=scene,
                 spec_max=spec_max,
                 ov_pct=0.0,

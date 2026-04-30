@@ -46,6 +46,9 @@ class InputVoltageRangeTest(TestCase):
     # ---------- 报告列定义 ----------
     # 顺序即 Excel 列顺序，按 COLS 定义顺序渲染所有列
     COLS = [
+    # 注意：「测试结论」列不定义在 COLS 中，
+    # 由 report_generator._flatten() 统一注入（prefix 列）。
+
                 ("输入条件",       16),
                 ("协议",           14),
                 ("输出电压(V)",    14),
@@ -56,7 +59,6 @@ class InputVoltageRangeTest(TestCase):
                 ("最大值",         12),
                 ("最小值",         12),
                 ("测试波形",        18),
-                ("测试结论",        11),
                 ("备注",           28),
     ]
 
