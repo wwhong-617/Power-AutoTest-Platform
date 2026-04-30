@@ -261,18 +261,19 @@ from logger_config import info
 
 class MyNewTest(TestCase):
     def __init__(self, ...):
-        # 不要在这里设置 self.test_conditions！
+        # 不要在这里设置 self.test_conditions！让基类 field(default_factory=list) 生效
         super().__init__(name="MyNewTest", ...)
-    
+
     def setup(self, instruments):
         super().setup(instruments)
-        # 缓存所有需要的参数
+        # 缓存所有需要的参数（包括 test_conditions！）
+        self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
         self.xxx = self.params.get("xxx", default)
-    
+
     def execute(self, instruments):
         # 实现测试逻辑
         pass
-    
+
     def verify(self) -> bool:
         return True
 ```
@@ -282,6 +283,32 @@ class MyNewTest(TestCase):
 ## 六、测试用例内部参数调用规则
 
 ### ⚠️ 核心黄金规则
+
+#### 0. `setup()` 中必须显式缓存 `test_conditions`（最重要！）
+
+**常见 bug：`__init__` 接收 `test_conditions=None`，父类 `field(default_factory=list)` 被 `None` 覆盖，execute 始终拿到空列表。**
+
+```python
+class InputDipTest(TestCase):
+    def __init__(self, test_conditions=None):
+        super().__init__(
+            name=self.name,
+            params={"test_conditions": test_conditions},  # test_conditions=None 写入了 params
+        )
+        # ❌ 错误：这里不要写 self.test_conditions = ...
+
+    def setup(self, instruments):
+        super().setup(instruments)
+        # ✅ 必须：重新从 params 读取并缓存，覆盖 __init__ 时的 None
+        self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
+
+    def execute(self, instruments):
+        conditions = self.test_conditions  # 现在能正确拿到值了
+```
+
+**黄金法则：所有从 `params` 读取的字段，务必在 `setup()` 中缓存，不要在 `execute()` 里直接调用 `self.params.get()`。**
+
+---
 
 #### 1. `test_conditions` 是 list[dict]，不是 tuple
 

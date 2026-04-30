@@ -79,8 +79,9 @@ class EngineAPI:
             if cat and eng_key:
                 test_cases_config.setdefault(cat, {})[eng_key] = True
 
-        # ---- 构建 test_conditions ----
-        test_conditions = []
+        # ---- 构建 test_conditions_v2：per-case 独立条件字典（不合并，避免去重丢失）----
+        # 结构：{case_key: [cond_dict, ...]}
+        test_conditions_v2 = {}
         filtered_count = 0
         for cn in checked_cases:
             en_key = self._case_cn_to_en.get(cn, cn)
@@ -92,12 +93,14 @@ class EngineAPI:
                         continue
                     key = (str(row["proto"]), str(row["vout"]), str(row["iout"]))
                     groups[key].append(row)
+                case_filtered = []
                 for key, grp in groups.items():
                     best = max(grp, key=lambda r: float(r["vin"]) if r["vin"] else 0)
-                    test_conditions.append(best)
+                    case_filtered.append(best)
                     filtered_count += 1
+                test_conditions_v2[en_key] = case_filtered
             else:
-                test_conditions.extend(rows)
+                test_conditions_v2[en_key] = list(rows)
 
         if filtered_count > 0:
             self._filter_note = f"（{filtered_count} 个输出组合已过滤为最高输入电压条件）"
@@ -158,9 +161,8 @@ class EngineAPI:
                 "input_voltage_min": input_lo,
                 "input_voltage_max": input_hi,
             },
-            "test_conditions": test_conditions,
-            # test_conditions_v2: 扁平列表，引擎内部调用 filter_conditions_by_case 做 per-case 过滤
-            "test_conditions_v2": list(test_conditions),
+            # test_conditions_v2: per-case 独立条件字典 {case_key: [cond_dict]}，引擎直接取用
+            "test_conditions_v2": test_conditions_v2,
             # filtered_conditions_v2: UI 内部用（Treeview 显示），不传入引擎
             "test_settings": test_settings,
             "test_params": test_params,

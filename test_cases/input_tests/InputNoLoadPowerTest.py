@@ -7,8 +7,8 @@ NoLoadPowerTest - 输入空载功耗测试
   验证 DUT 在空载（无负载）状态下的输入功率是否满足规格要求。
 
 【测试条件格式】
-  (vin, freq, proto_label, vout_target, iout_target, product_type)
-  例: (220.0, 50.0, "PD", 20.0, 3.25, "charger")
+  {vin, freq, proto, vout, iout}
+  例: {"vin": 220.0, "freq": 50.0, "proto": "PD", "vout": 20.0, "iout": 3.25}
 
 【判定逻辑】
   avg_power ∈ [noload_power_lo, noload_power_hi] → PASS
@@ -19,10 +19,10 @@ NoLoadPowerTest - 输入空载功耗测试
   - 驱动自动选档：set_voltage_range_auto(ch, vin) → 选 ≥ vin 的最小档
 
 【sub_result 字段】
-  input_cond, proto_label, vout_target, iout_target,
+  input_cond, proto_label, vout_target,
   spec_min, spec_max,
   avg_power_w, min_power_w, max_power_w,
-  sniffer_ok, overall_pass, fail_reason, waveform, skipped
+  overall_pass, fail_reason, skipped
 """
 
 import time
@@ -81,8 +81,6 @@ class InputNoLoadPowerTest(TestCase):
         # __init__ param names kept for backward compatibility; spec dict keys must match UI specs_v2 flat keys
     ):
         self.product_type = product_type
-        self.test_conditions = test_conditions or []
-        self.input_voltage_min = input_voltage_min
         self.sub_results: List[dict] = []
 
         super().__init__(
@@ -90,7 +88,7 @@ class InputNoLoadPowerTest(TestCase):
             instruments=["AC_SOURCE", "POWER_METER", "SNIFFER", "ELOAD"],
             params={
                 "product_type":       product_type,
-                "test_conditions":   test_conditions or [],
+                "test_conditions":   test_conditions,
                 "input_voltage_min": input_voltage_min,
                 "load_current":      self.DEFAULT_LOAD_CURRENT,
                 "load_on_time":      self.DEFAULT_LOAD_ON_TIME,
@@ -125,6 +123,7 @@ class InputNoLoadPowerTest(TestCase):
         self.settle_time     = float(self.params.get("settle_time", self.DEFAULT_SETTLE_TIME))
         self.measure_count   = int(self.params.get("measure_count", self.DEFAULT_MEASURE_COUNT))
         self.measure_interval = float(self.params.get("measure_interval", self.DEFAULT_MEASURE_INTERVAL))
+        self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
 
         pm = instruments.get("POWER_METER")
         if pm:
@@ -143,8 +142,8 @@ class InputNoLoadPowerTest(TestCase):
     #  │    ② 加载测试条件（AC 电压/频率 + 功率计电压档位）        │
     #  │    ③ 诱骗器协议                                        │
     #  │    ④ 电子负载 ON/OFF（激活 DUT）                        │
-    #  │    ⑤ 等待稳定，功率计读取多组数据                        │
-    #  │    ⑥ 判定：avg_power ∈ [lo, hi] → PASS/FAIL          │
+    #  │    ⑤ 等待稳定（settle_time），功率计读取多组数据        │
+    #  │    ⑥ 判定：avg_power ∈ [lo, hi] → PASS / FAIL          │
     #  │    ⑦ 放电（下电）                                        │
     #  └─────────────────────────────────────────────────────────────┘
     # =================================================================
@@ -154,19 +153,14 @@ class InputNoLoadPowerTest(TestCase):
         pwr  = instruments.get("POWER_METER")
         snif = instruments.get("SNIFFER")
 
-        conditions = self.test_conditions if self.test_conditions else (self.params.get("test_conditions") or [])
+        conditions = self.test_conditions
         if not conditions:
             warning("[NLT] 无测试条件，跳过执行")
             return
 
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
-            (
-                vin_cfg, freq_cfg, proto_label,
-                vout_target, iout_target,
-            ) = cond["vin"], cond["freq"], cond["proto"], cond["vout"], cond["iout"]
+            vin_cfg, freq_cfg, proto_label, vout_target, iout_target = \
+                cond["vin"], cond["freq"], cond["proto"], cond["vout"], cond["iout"]
 
             input_cond = f"{vin_cfg}V_{freq_cfg}Hz"
 
@@ -186,7 +180,7 @@ class InputNoLoadPowerTest(TestCase):
                     self._make_result(
                         input_cond=input_cond,
                         proto_label=proto_label,
-                        vout_target=vout_target,
+                        vout_target=round(vout_target, 3),
                         avg_power=0.0,
                         min_power=0.0,
                         max_power=0.0,
@@ -223,7 +217,7 @@ class InputNoLoadPowerTest(TestCase):
                 self._make_result(
                     input_cond=input_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
+                    vout_target=round(vout_target, 3),
                     avg_power=avg_power,
                     min_power=min_power,
                     max_power=max_power,
@@ -242,13 +236,14 @@ class InputNoLoadPowerTest(TestCase):
 
     def _step_load_condition(self, vin: float, pm=None):
         """
-        步骤②：功率计电压档位设置——
+        步骤②：功率计电压档位设置。
 
-        AC 电压/频率已在 startup_self_check 中设置，本方法仅配置功率计电压档位。
+        AC 电压/频率已在 startup_self_check① 中通过 ac.set_voltage() / ac.set_frequency() 设置；
+        本方法仅负责根据实际 AC 电压配置功率计的电压量程档位。
 
         Args:
-            vin:  输入电压（V）（仅用于功率计档位选择）
-            pm:   功率计仪器（可选）
+            vin:  本次条件的输入电压（V），用于功率计档位自动选择
+            pm:   功率计仪器（可为 None）
         """
         if pm is not None:
             try:
@@ -259,9 +254,14 @@ class InputNoLoadPowerTest(TestCase):
 
     def _step_eload_on_off(self, eload, iout: float):
         """
-        步骤④：电子负载 ON（带载 DEFAULT_LOAD_ON_TIME 秒），然后 OFF。
+        步骤④：电子负载 ON（带载 self.load_on_time 秒），然后 OFF。
 
-        用于激活 DUT，使其进入正常工作状态。
+        用于激活 DUT 进入正常工作状态（空载功耗测量前需让 DUT 充分启动）。
+
+        Args:
+            eload: 电子负载仪器（可为 None）
+            iout:  电子负载设定电流（A），来自功率分段后的有效电流 iout_eff，
+                   用于在低压区（Vin < 180V）以降低功率带载，避免 DUT 保护
         """
         if eload is None:
             return

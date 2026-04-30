@@ -227,7 +227,7 @@ class InputVoltageRangeTest(TestCase):
             warning("[IVRT] 示波器未连接，跳过")
             return
 
-        # 输入通道测 AC 输入电压，v_peak = vin_cfg × √2（扫描时最高电压，确保不削顶）
+        # 输入通道测 AC 输入电压，v_peak = vin_cfg × √2 × 2（扫描时最高电压，确保不削顶）
         # vin_cfg 为 None 时退化为最保守估算（使用 UI 设定的最低电压）
         if vin_cfg is None:
             vin_cfg = self.vin_lo_ui

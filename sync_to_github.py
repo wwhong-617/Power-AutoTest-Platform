@@ -47,7 +47,6 @@ def sync(message=None):
 
     # 提交
     if message is None:
-        from datetime import datetime
         message = f"Auto-sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
     commit_out, code = run(f'git commit -m "{message}"')

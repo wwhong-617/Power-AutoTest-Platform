@@ -7,8 +7,9 @@ InputUnderVoltageTest - 输入欠压保护测试
   验证 DUT 在输入电压跌落至欠压点时的保护行为（自恢复或锁死），
   以及输入电压回升至恢复点时输出是否按预期恢复。
 
-test_conditions 格式（6 元组）：
-  (vin_min, freq, proto_label, vout_target, iout_target, product_type)
+test_conditions 格式（List[dict]）：
+  [{"vin": float, "freq": float, "proto": str,
+    "vout": float, "iout": float, "product_type": str}, ...]
 
 保护逻辑：
   protection_mode = "self"（自恢复）：
@@ -18,12 +19,6 @@ test_conditions 格式（6 元组）：
     - 欠压点（uvp_point）必须在 brown_out [lo, hi] 范围内
     - 在 brown_in 范围内不得发生重启
 
-sub_result 字段：
-  input_cond, condition, proto_label, vout_target, iout_target,
-  brown_out_hi, brown_out_lo, brown_in_hi, brown_in_lo,
-  uvp_point, recovery_point,
-  restart_in_fast_down, restart_in_fast_up, latch_restart_in_slow_up,
-  overall_pass, fail_reason, waveform, skipped
 """
 
 import time
@@ -144,14 +139,14 @@ class InputUnderVoltageTest(TestCase):
         super().setup(instruments)
 
         # ---- 缓存 UI 参数 ----
-        self.conditions         = self.test_conditions or self.params.get("test_conditions", [])
+        self.test_conditions    = self.test_conditions or self.params.get("test_conditions", [])
         self.osc_input_ch      = int(self.params.get("osc_input_ch",   4))
         self.osc_output_ch     = int(self.params.get("osc_output_ch",  2))
         self.pwr_out_v_ch      = self.params.get("pwr_out_v_ch", "CH1")
         self.load_startup_enabled  = bool(self.params.get("load_startup_enabled", 0))
         self.load_startup_current  = float(self.params.get("load_startup_current", 0.0))
         self.load_startup_voltage = float(self.params.get("load_startup_voltage", 5.0))
-        self.vin_cfg_est = self.conditions[0]["vin"] if self.conditions else 90.0
+        self.vin_cfg_est = self.test_conditions[0]["vin"] if self.test_conditions else 90.0
 
     # ---------- execute ----------
     def execute(self, instruments: Dict[str, Any]):
@@ -173,7 +168,7 @@ class InputUnderVoltageTest(TestCase):
         pwr     = instruments.get("POWER_METER")
 
 
-        for cond in self.conditions:
+        for cond in self.test_conditions:
             if len(cond) < 5:
                 continue
 
@@ -197,8 +192,8 @@ class InputUnderVoltageTest(TestCase):
                 self.sub_results.append(self._make_result(
                     input_cond=input_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_target=iout_eff,
+                    vout_target=round(vout_target, 3),
+                    iout_target=round(iout_eff, 3),
                     brown_out_hi=self.brown_out_hi,
                     brown_out_lo=self.brown_out_lo,
                     brown_in_hi=self.brown_in_hi,
@@ -238,8 +233,8 @@ class InputUnderVoltageTest(TestCase):
             self.sub_results.append(self._make_result(
                 input_cond=input_cond,
                 proto_label=proto_label,
-                vout_target=vout_target,
-                iout_target=iout_eff,
+                vout_target=round(vout_target, 3),
+                iout_target=round(iout_eff, 3),
                 brown_out_hi=self.brown_out_hi,
                 brown_out_lo=self.brown_out_lo,
                 brown_in_hi=self.brown_in_hi,
@@ -261,9 +256,10 @@ class InputUnderVoltageTest(TestCase):
         """
         步骤2：配置示波器 ROLL 模式，配合欠压测试四阶段扫描。
 
-        - 先开启输入通道（Vin 监测）和输出通道（Vout 监测）
+        - 输入通道：测 AC 输入电压（正弦波，offset=0），用 auto_config_channel 自动量程
+        - 输出通道：测 DUT 输出电压，用 auto_config_channel 自动量程
         - 时基根据估算扫描时间常数设置，配合欠压测试 4 阶段
-        - ROLL 模式下示波器持续刷新，等待扫描期间持续采集
+        - ROLL 模式：示波器持续刷新，等待扫描期间持续采集
         """
         if osc is None:
             warning("[IUVT] 示波器未连接，跳过")
@@ -274,24 +270,26 @@ class InputUnderVoltageTest(TestCase):
         ascend_time  = (self.vin_cfg_est - self.brown_in_lo + 10) / self.VOLTAGE_STEP_FINE * self.settle_time
         total_time  = descend_time + ascend_time
         timebase    = max(10.0, total_time / 10.0)
-        
-        # 设置输入通道
-        osc.set_channel_config(channel=self.osc_input_ch, coupling="DC",
-                              voltage_scale=50.0,
-                              voltage_offset=0.0,
-                              bandwidth_limit=True)
+
+        # 输入通道测 AC 输入电压（正弦波，offset=0），v_peak = vin_cfg × √2 × 2
+        vin_peak = self.vin_cfg_est * 1.414 * 2
+        osc.auto_config_channel(channel=self.osc_input_ch, v_peak=vin_peak,
+                              coupling="DC",
+                              bandwidth_limit=True,
+                              offset=0.0)   # 正弦波中心在 0V
         osc.set_channel_on(self.osc_input_ch)
-        # 设置输出通道
+
+        # 输出通道
         osc.auto_config_channel(channel=self.osc_output_ch, v_peak=vout,
                               coupling="DC",
                               bandwidth_limit=True)
         osc.set_channel_on(self.osc_output_ch)
-        
+
         osc.set_timebase_mode("ROLL")
         time.sleep(0.3)
         osc.set_timebase(timebase)
         time.sleep(0.5)
-        info(f"[IUVT] 示波器 ROLL | 时基={timebase:.1f}s/div")
+        info(f"[IUVT] 示波器 ROLL | 时基={timebase:.1f}s/div | Vin_peak≈{vin_peak:.1f}V")
     def _step_voltage_sweep(self, ac, osc, eload, pwr,
                              vin_cfg: float, vout_target: float) -> tuple:
         """
@@ -302,7 +300,7 @@ class InputUnderVoltageTest(TestCase):
         """
         brown_out_lo    = self.brown_out_lo
         brown_in_lo     = self.brown_in_lo
-        dropout_thresh  = vout_target * self.VOUT_DROPOUT_RATIO
+        dropout_thresh   = vout_target * self.VOUT_DROPOUT_RATIO
         recovery_thresh = self.load_startup_voltage * self.VOUT_RECOVERY_RATIO
 
         uvp_point      = None

@@ -244,9 +244,8 @@ class TestEngine:
         test_settings = self.config.get("test_settings", {})
         test_params   = self.config.get("test_params", {})
         product_info  = self.config.get("product_info", {})
-        # config_ui 保存的是 test_conditions_v2（扁平列表），需要按 case_key 过滤
-        from ui._conditions import filter_conditions_by_case
-        all_conditions = self.config.get("test_conditions_v2", [])
+        # config_ui 保存的是 test_conditions_v2（per-case 字典），引擎直接按 case_key 取用
+        all_conditions = self.config.get("test_conditions_v2", {})
 
         # ---- 通用参数（所有 case 都有）----
         for ch_key, attn_key, param_ch, param_attn in [
@@ -298,8 +297,8 @@ class TestEngine:
         if case_key is None:
             return
 
-        # 用 ui._conditions 工具函数从扁平列表中过滤出当前 case 的专属条件
-        cond_list = filter_conditions_by_case(case_key, all_conditions, self.CASE_REGISTRY)
+        # 条件已由 _build_test_engine_config 按 case_key 分好，直接取用
+        cond_list = all_conditions.get(case_key, [])
 
         # config_ui 存的是 dict列表，直接送
         case.params["test_conditions"] = cond_list

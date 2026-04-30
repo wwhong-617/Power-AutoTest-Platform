@@ -11,7 +11,7 @@ test_conditions 格式（dict）：
   {vin, freq, proto, vout, iout}
 
 sub_result 字段：
-  input_cond, condition, proto_label, vout_target, iout_target,
+  input_cond, proto_label, vout_target, iout_target,
   spec_min, spec_max,
   osc_vmax, osc_vmin, osc_pass,
   dip_sequence,          # 跌落序列描述字符串，如 "90V&2s~240V&2s+10"
@@ -70,17 +70,18 @@ class InputDipTest(TestCase):
 
     # ---------- __init__ ----------
     def __init__(self, test_conditions=None):
-        super().__init__(name=self.name, instruments=self.instruments)
+        super().__init__(
+            name=self.name,
+            instruments=self.instruments,
+            params={
+                "dip_cycles":  self.DEFAULT_PARAMS["dip_cycles"],
+                "settle_time":  self.DEFAULT_PARAMS["settle_time"],
+                "test_conditions": test_conditions,
+            },
+        )
         # 合并默认参数（不覆盖引擎通过 kwargs 注入的值）
         for k, v in self.DEFAULT_PARAMS.items():
             self.params.setdefault(k, v)
-        # test_conditions 若未传入，则从引擎注入的 self.params 读取
-        self.test_conditions = (
-            test_conditions
-            if test_conditions is not None
-            else self.params.get("test_conditions") or []
-        )
-        self.spec = {}
         self.sub_results: List[dict] = []
         self.product_type = ""
 
@@ -96,6 +97,7 @@ class InputDipTest(TestCase):
         self.dip_cycles      = int(self.params.get("dip_cycles",   10))
         self.settle_time     = float(self.params.get("settle_time", 2.0))
         self.vin_lo_ui       = float(self.params.get("input_voltage_lo") or 90.0)
+        self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
 
     # ---------- execute ----------
     def execute(self, instruments: Dict[str, Any]):
@@ -123,11 +125,9 @@ class InputDipTest(TestCase):
             return
 
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
             vin_cfg, freq_cfg, proto_label, vout_target, iout_target = \
                 cond["vin"], cond["freq"], cond["proto"], cond["vout"], cond["iout"]
+            input_cond = f"{int(self.vin_lo_ui)}V~{int(float(vin_cfg))}V"
             cond_label = f"{proto_label}/Vout{vout_target}V/Iout{iout_target}A"
 
             vout_spec_min = round(float(vout_target) * 0.9, 3)
@@ -149,10 +149,10 @@ class InputDipTest(TestCase):
                 info(f"[IDT] 条件「{cond_label}」{fail_reason}，跳过")
                 self._step_discharge(ac, eload)
                 self.sub_results.append(self._make_result(
-                    input_cond=f"{int(self.vin_lo_ui)}V~{int(float(vin_cfg))}V",
+                    input_cond=input_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
-                    iout_target=iout_eff,
+                    vout_target=round(vout_target, 3),
+                    iout_target=round(iout_eff, 3),
                     spec_min=vout_spec_min,
                     spec_max=vout_spec_max,
                     osc_vmax=0.0,
@@ -165,7 +165,7 @@ class InputDipTest(TestCase):
                 continue
 
             # ---- 步骤2：示波器 ROLL 模式 ----
-            self._step_setup_osc(osc, float(vout_target))
+            self._step_setup_osc(osc, float(vout_target), vin_cfg=vin_cfg)
 
             # ---- 步骤3：诱骗器协议 ----
             sniffer_ok = self._step_setup_sniffer(sniffer, proto_label, vout_target, iout_eff)
@@ -208,10 +208,10 @@ class InputDipTest(TestCase):
                 "诱骗器协议异常" if not sniffer_ok else "")
 
             self.sub_results.append(self._make_result(
-                input_cond=f"{int(self.vin_lo_ui)}~{int(float(vin_cfg))}V",
+                input_cond=input_cond,
                 proto_label=proto_label,
-                vout_target=vout_target,
-                iout_target=iout_eff,
+                vout_target=round(vout_target, 3),
+                iout_target=round(iout_eff, 3),
                 spec_min=vout_spec_min,
                 spec_max=vout_spec_max,
                 osc_vmax=osc_vmax,
@@ -228,31 +228,41 @@ class InputDipTest(TestCase):
 
     # ---------- 步骤方法 ----------
 
-    def _step_setup_osc(self, osc, vout: float):
+    def _step_setup_osc(self, osc, vout: float, vin_cfg: float = None):
         """
         步骤2：配置示波器双通道 + ROLL 模式。
 
-        - 开启输入通道（Vin 监测）和输出通道（Vout 监测），全带宽（跌落瞬态需捕捉高频成分）
+        - 输入通道：测 AC 输入电压（正弦波，offset=0），用 auto_config_channel 自动量程
+        - 输出通道：测 DUT 输出电压，用 auto_config_channel 自动量程
+        - 全带宽（跌落瞬态需捕捉高频成分，带宽限制关闭）
         - VMAX/VMIN 测量项（在 auto_config_channel 后单独添加）
         - 时基根据跳变总时长估算（cycles × 2×settle_time）
         - ROLL 模式：示波器滚动刷新，扫描期间持续采集
+
+        Args:
+            vin_cfg: 本次扫描的最高条件电压（V），用于计算输入通道量程峰值
         """
         if osc is None:
             return
 
         try:
-            # 设置输入通道
-            osc.set_channel_config(channel=self.osc_input_ch, coupling="DC",
-                              voltage_scale=100.0,
-                              voltage_offset=0.0,
-                              bandwidth_limit=False)
+            # 输入通道测 AC 输入电压（正弦波，offset=0），v_peak = vin_cfg × √2 × 2
+            # vin_cfg 为 None 时退化为最保守估算（使用 UI 设定的最低电压）
+            if vin_cfg is None:
+                vin_cfg = self.vin_lo_ui
+            vin_peak = vin_cfg * 1.414 * 2
+            osc.auto_config_channel(channel=self.osc_input_ch, v_peak=vin_peak,
+                              coupling="DC",
+                              bandwidth_limit=False,
+                              offset=0.0)   # 正弦波中心在 0V
             osc.set_channel_on(self.osc_input_ch)
-            # 设置输出通道
+
+            # 输出通道
             osc.auto_config_channel(channel=self.osc_output_ch, v_peak=vout,
                               coupling="DC",
                               bandwidth_limit=False)
             osc.set_channel_on(self.osc_output_ch)
-            info(f"[IDT] 示波器通道已开启: CH{self.osc_input_ch}(输入) + CH{self.osc_output_ch}(输出)")
+            info(f"[IDT] 示波器通道已开启: CH{self.osc_input_ch}(输入) + CH{self.osc_output_ch}(输出) | Vin_peak≈{vin_peak:.1f}V")
 
             osc.add_measurement(f"CHAN{self.osc_output_ch}", "VMAX")
             osc.add_measurement(f"CHAN{self.osc_output_ch}", "VMIN")
@@ -271,25 +281,26 @@ class InputDipTest(TestCase):
     def _step_dip_recover(self, osc, ac, eload, vin_lo, vin_hi,
                             iout_target, iout_eff):
         """
-        步骤5：输入跌落序列（循环 cycles 次）。
+        步骤5：输入跌落序列（循环 dip_cycles 次）。
 
-        入口即清屏。
-        每次循环：
-          下行跌落 vin_hi → vin_lo：
-            - vin_lo < 180V 时，先切降功率负载 iout_eff，再跌落电压
-          上行恢复 vin_lo → vin_hi：
-            - 先完成电压跳变
-            - vin_lo < 180V 时，电压进入 HV 区（≥180V）后切回满载 iout_target
+        每次循环分为两个阶段：
+        1. 下行跌落 vin_hi → vin_lo：AC 电压从高压往低压跌
+           - vin_lo < 180V（LV 区）：先切电子负载至降功率电流 iout_eff，再跌落 AC 电压
+           - vin_lo ≥ 180V（HV 区）：直接跌落 AC 电压，负载保持满载 iout_target
+        2. 上行恢复 vin_lo → vin_hi：AC 电压从低压往高压升
+           - 先升 AC 电压
+           - vin_lo < 180V 时：等待 AC 实测电压 ≥ 180V 后切回满载 iout_target（最多等 4s 超时放弃）
+           - vin_lo ≥ 180V 时：负载保持满载，无需切换
         支持暂停/停止。
 
         Args:
-            osc:         示波器（可 None）
+            osc:         示波器（可为 None）
             ac:          交流源
-            eload:       电子负载
-            vin_lo:      跌落目标电压（低压下限）
-            vin_hi:      恢复目标电压（高压上限）
-            iout_target: 满载电流（A），HV 区恢复时切回
-            iout_eff:   有效电流（A），LV 降功率段使用
+            eload:       电子负载（可为 None）
+            vin_lo:      跌落目标电压（低压下限，V）
+            vin_hi:      恢复目标电压（高压上限，V）
+            iout_target: 满载电流（A），HV 区及 LV 区上行恢复后使用
+            iout_eff:   降功率电流（A），LV 区下行跌落时使用
         """
         if eload is None:
             return

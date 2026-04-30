@@ -12,8 +12,8 @@ EfficiencyTest - 能效测试
   η = (Vout × Iout) / Pin × 100%
 
 【测试条件格式】
-  (输入电压, 频率, 协议, 输出电压, 输出电流)
-  例: (220.0, 50.0, "PD", 20.0, 3.25)
+  {vin, freq, proto, vout, iout}
+  例: {"vin": 220.0, "freq": 50.0, "proto": "PD", "vout": 20.0, "iout": 3.25}
 
 【负载点】
   100% → 75% → 50% → 25% → 10%  （从大到小，减少电子负载开关动作）
@@ -108,6 +108,7 @@ class InputEfficiencyTest(TestCase):
         test_conditions: List[tuple] = None,
     ):
         self.product_type = product_type
+        self.test_conditions = None   # 避免 setup() 访问未定义属性 AttributeError
         self.sub_results: List[dict] = []
 
         super().__init__(
@@ -183,14 +184,9 @@ class InputEfficiencyTest(TestCase):
 
         # ── 主测试循环 ──
         for cond in conditions:
-            if len(cond) < 5:
-                continue
-
-            (
-                vin_cfg, freq_cfg, proto_label,
-                vout_target, iout_target,
-            ) = (cond.get("vin"), cond.get("freq"), cond.get("proto", ""),
-                  cond.get("vout"), cond.get("iout"))
+            vin_cfg, freq_cfg, proto_label, vout_target, iout_target = \
+                cond.get("vin"), cond.get("freq"), cond.get("proto", ""), \
+                cond.get("vout"), cond.get("iout")
 
             input_cond  = f"{vin_cfg}V_{freq_cfg}Hz"
             output_cond = f"{proto_label}_Vout{vout_target}V_Iout{iout_target}A"
@@ -199,7 +195,7 @@ class InputEfficiencyTest(TestCase):
             iout_eff = self._get_effective_iout(vin_cfg, vout_target, iout_target)
 
             # 缓存当前条件的 vout_target，供 _measure_load_point 读取
-            self.vout_target = vout_target
+            self.vout_target = round(vout_target, 3)
 
             # ① 开机自检（直接用当前条件的输入电压/频率）
             startup_ok, _, fail_reason = self.startup_self_check(
@@ -214,7 +210,7 @@ class InputEfficiencyTest(TestCase):
                     input_cond=input_cond,
                     output_cond=output_cond,
                     proto_label=proto_label,
-                    vout_target=vout_target,
+                    vout_target=round(vout_target, 3),
                     iout_eff=iout_eff,
                     skipped=True,
                     reason=fail_reason,
@@ -265,7 +261,7 @@ class InputEfficiencyTest(TestCase):
                 load_results=load_results,
                 input_cond=input_cond,
                 proto_label=proto_label,
-                vout_target=vout_target,
+                vout_target=round(vout_target, 3),
                 iout_eff=iout_eff,
                 avg_6l=avg_6l,
                 avg_7l=avg_7l,
