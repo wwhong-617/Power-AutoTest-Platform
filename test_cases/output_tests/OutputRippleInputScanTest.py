@@ -177,7 +177,7 @@ class OutputRippleInputScanTest(TestCase):
                 info(f"[RippleInputScan] 条件「{cond_label}」功率分段降流：Iout={iout_eff:.3f}A（原设定 {iout_target}A）")
 
             # ---- 步骤1：开机自检（用该条件电压，最多3次清除重试）----
-            startup_ok, measured_vout, fail_reason = self.startup_self_check(
+            startup_ok, _, fail_reason = self.startup_self_check(
                 instruments, vin=float(vin_cfg), freq=float(freq_cfg)
             )
             self.measurements[f"startup_ok_c{cond_idx+1}"] = startup_ok

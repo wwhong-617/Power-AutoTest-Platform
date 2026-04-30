@@ -1,0 +1,225 @@
+{
+    "_schema_version": "v2",
+    "devices": {
+        "ac_source": {
+            "comm": "USB",
+            "addr": "USB0::0xFFFF::0x7300::800476162797610006::INSTR",
+            "model": "IT7321"
+        },
+        "electronic_load": {
+            "comm": "USB",
+            "addr": "USB0::0x2EC7::0x8700::800828011777420010::INSTR",
+            "model": "IT8701P"
+        },
+        "oscilloscope": {
+            "comm": "USB",
+            "addr": "USB0::0x0957::0x17A6::MY64080108::INSTR",
+            "model": "DSOX4024A"
+        },
+        "power_meter": {
+            "comm": "USB",
+            "addr": "USB0::0x0B21::0x0025::543131333130313239::INSTR",
+            "model": "WT333E"
+        },
+        "sniffer": {
+            "comm": "COM",
+            "addr": "COM16",
+            "model": "IP2716Sniffer"
+        },
+        "dc_source": {
+            "comm": "USB",
+            "addr": "USB0::0xFFFF::0x6300::802123072787770068::INSTR",
+            "model": "IT6333A"
+        }
+    },
+    "product_info": {
+        "product_name": "小胖ATE调试",
+        "product_type": "充电器",
+        "input_voltage_lo": 90.0,
+        "input_voltage_hi": 264.0,
+        "output_voltage": 0.0,
+        "output_power": 0.0,
+        "power_segment": true,
+        "hv_power": 60.0,
+        "lv_power": 45.0,
+        "load_startup_enabled": true,
+        "load_startup_current": 0.5,
+        "load_startup_voltage": 5.0,
+        "specs_v2": {
+            "6级能效要求_pct_enable": 1.0,
+            "7级能效要求_pct_enable": 0.0,
+            "电压精度_pct_lo": -5.0,
+            "电压精度_pct_hi": 5.0,
+            "大动态负载范围_pct_lo": -10.0,
+            "大动态负载范围_pct_hi": 10.0,
+            "小动态负载范围_pct_lo": -5.0,
+            "小动态负载范围_pct_hi": 5.0,
+            "开关机过冲_pct_lo": 0.0,
+            "开关机过冲_pct_hi": 10.0,
+            "空载功耗_W_lo": 0.0,
+            "空载功耗_W_hi": 0.5,
+            "待机功耗_W_lo": 0.0,
+            "待机功耗_W_hi": 0.075,
+            "Brown_in_V_lo": 70.0,
+            "Brown_in_V_hi": 80.0,
+            "Brown_out_V_lo": 60.0,
+            "Brown_out_V_hi": 70.0,
+            "输出过压点_V_lo": 21.0,
+            "输出过压点_V_hi": 25.0,
+            "输出欠压点_V_lo": 2.0,
+            "输出欠压点_V_hi": 4.0,
+            "输出过流点_pct_lo": 110.0,
+            "输出过流点_pct_hi": 120.0,
+            "纹波要求_mV_lo": 0.0,
+            "纹波要求_mV_hi": 200.0
+        },
+        "protection_logic_v2": {
+            "输入欠压保护_mode": "self",
+            "输出过压保护_mode": "self",
+            "输出过流保护_mode": "self"
+        },
+        "qc": {
+            "QC2.0-5V": {
+                "enabled": 0,
+                "value": "5V3A"
+            },
+            "QC2.0-9V": {
+                "enabled": 0,
+                "value": "9V2A"
+            },
+            "QC2.0-12V": {
+                "enabled": 0,
+                "value": "12V1.5A"
+            },
+            "QC2.0-20V": {
+                "enabled": 0,
+                "value": "20V0.9A"
+            },
+            "QC3.0": {
+                "enabled": 0,
+                "value": ""
+            }
+        },
+        "pd": {
+            "PDO1": {
+                "enabled": 1,
+                "value": "5V3A"
+            },
+            "PDO2": {
+                "enabled": 1,
+                "value": "9V3A"
+            },
+            "PDO3": {
+                "enabled": 1,
+                "value": "12V3A"
+            },
+            "PDO4": {
+                "enabled": 1,
+                "value": "15V3A"
+            },
+            "PDO5": {
+                "enabled": 1,
+                "value": "20V3A"
+            },
+            "PDO6": {
+                "enabled": 0,
+                "value": "PPS-11V6.1A"
+            },
+            "PDO7": {
+                "enabled": 0,
+                "value": "PPS-20V3.25A"
+            }
+        },
+        "ufcs": {
+            "UFCS1档": {
+                "enabled": 0,
+                "value": ""
+            },
+            "UFCS2档": {
+                "enabled": 0,
+                "value": ""
+            },
+            "UFCS3档": {
+                "enabled": 0,
+                "value": ""
+            },
+            "UFCS4档": {
+                "enabled": 0,
+                "value": ""
+            },
+            "UFCS5档": {
+                "enabled": 0,
+                "value": ""
+            },
+            "UFCS6档": {
+                "enabled": 0,
+                "value": ""
+            },
+            "UFCS7档": {
+                "enabled": 0,
+                "value": ""
+            }
+        }
+    },
+    "test_params": {
+        "osc_in_ch": "CH4",
+        "osc_in_attn": 200.0,
+        "osc_out_ch": "CH2",
+        "osc_out_attn": 1.0,
+        "pwr_in_v_ch": "CH1",
+        "pwr_in_i_ch": "CH1",
+        "pwr_out_v_ch": "CH2",
+        "pwr_out_i_ch": "CH2",
+        "eload_vout1_ch": "CH1",
+        "eload_vout2_ch": "CH3",
+        "dyn_large": [
+            {
+                "up_pct": 90,
+                "up_slew": "0.2",
+                "down_pct": 10,
+                "down_slew": "0.2",
+                "freq": 50,
+                "ratio": 50
+            }
+        ],
+        "dyn_small": [
+            {
+                "up_pct": 25,
+                "up_slew": "0.2",
+                "down_pct": 50,
+                "down_slew": "0.2",
+                "freq": 50,
+                "ratio": 50
+            }
+        ],
+        "warmup": 1.0,
+        "onoff_cycle": "10-10",
+        "short_cycle": "10-10"
+    },
+    "test_settings": {
+        "osc_input_ch": "CH4",
+        "osc_input_attn": "200.0",
+        "osc_output_ch": "CH2",
+        "osc_output_attn": "1.0",
+        "osc_dynamic_ch": "CH1",
+        "osc_dynamic_attn": "10.0"
+    },
+    "test_conditions_v2": [
+        {
+            "product_type": "充电器",
+            "vin": 90.0,
+            "freq": 60.0,
+            "proto": "PD-PDO5",
+            "vout": 20.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 264.0,
+            "freq": 50.0,
+            "proto": "PD-PDO5",
+            "vout": 20.0,
+            "iout": 3.0
+        }
+    ]
+}

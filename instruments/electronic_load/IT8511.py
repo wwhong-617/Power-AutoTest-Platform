@@ -262,12 +262,16 @@ class IT8511(BaseElectronicLoad):
     def run_dynamic(self, progress_callback=None):
         """
         启动动态拉载（瞬态模式）。
+
+        动态拉载由硬件持续运行，run_dynamic 仅负责触发和开启负载输入。
+        停止请调用 stop()。
         """
         self._stop_flag = False
         self.trigger("ON")
         time.sleep(0.05)
         self.input_on()
-        self._stop_flag = True
+        # 注意：不要在这里设置 self._stop_flag = True，
+        # 否则动态拉载会在触发后立即被标记为停止
 
     # ================================================================
     #  5. LIST 功能

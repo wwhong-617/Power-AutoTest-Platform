@@ -204,7 +204,7 @@ class InputEfficiencyTest(TestCase):
             iout_eff = self._get_effective_iout(vin_cfg, vout_target, iout_target)
 
             # ① 开机自检（直接用当前条件的输入电压/频率）
-            startup_ok, measured_vout, fail_reason = self.startup_self_check(
+            startup_ok, _, fail_reason = self.startup_self_check(
                 instruments, vin=vin_cfg, freq=freq_cfg
             )
             if not startup_ok:
@@ -380,7 +380,7 @@ class InputEfficiencyTest(TestCase):
 
         # ① 开机自检（直接用热机条件的输入电压/频率）
         logger.info(f"[EfficiencyTest] 热机开机自检...")
-        startup_ok, measured_vout, fail_reason = self.startup_self_check(
+        startup_ok, _, fail_reason = self.startup_self_check(
             instruments, vin=vin_cfg, freq=freq_cfg
         )
         if not startup_ok:

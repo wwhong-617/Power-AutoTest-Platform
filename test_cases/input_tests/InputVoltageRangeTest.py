@@ -137,7 +137,7 @@ class InputVoltageRangeTest(TestCase):
             iout_eff = self._get_effective_iout(float(vin_cfg), float(vout_target), float(iout_target))
 
             # ---- 步骤1：开机自检（用该条件电压，最多3次清除重试）----
-            startup_ok, measured_vout, fail_reason = self.startup_self_check(
+            startup_ok, _, fail_reason = self.startup_self_check(
                 instruments, vin=float(vin_cfg), freq=float(freq_cfg)
             )
             if not startup_ok:

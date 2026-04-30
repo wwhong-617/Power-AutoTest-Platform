@@ -176,7 +176,7 @@ class InputNoLoadPowerTest(TestCase):
                 info(f"[NLT] 功率分段降流：Iout={iout_eff:.3f}A（原设定 {iout_target}A）")
 
             # ① 开机自检（用测试条件电压，最多3次清除重试）
-            startup_ok, measured_vout, fail_reason = self.startup_self_check(
+            startup_ok, _, fail_reason = self.startup_self_check(
                 instruments, vin=float(vin_cfg), freq=float(freq_cfg)
             )
             if not startup_ok:

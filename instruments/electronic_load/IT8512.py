@@ -55,6 +55,7 @@ LIST 模式
 """
 
 import time
+from typing import Optional
 from .BaseElectronicLoad import BaseElectronicLoad, LoadMode
 
 
@@ -172,33 +173,94 @@ class IT8512(BaseElectronicLoad):
     #  4. 动态功能（Dynamic）
     # ================================================================
 
-    def set_dynamic_mode(self,
-                        i_high: float,
-                        i_low: float,
-                        frequency: float,
-                        rise_time: float = None,
-                        fall_time: float = None):
-        """配置动态拉载模式（CC-Dynamic）"""
+    def set_dynamic_mode(
+        self,
+        i_high: float,
+        i_low: float,
+        frequency: Optional[float] = None,
+        slew_rate_a: Optional[float] = None,
+        slew_rate_b: Optional[float] = None,
+        high_dwell: Optional[float] = None,
+        low_dwell: Optional[float] = None,
+    ):
+        """
+        配置动态拉载模式（CC-Dynamic）。
+
+        IT8500 系列动态命令：
+          :SOUR:FUNC DYN                  → 进入动态模式
+          :SOUR:DYN:IH <val>              → 高电流 (A)
+          :SOUR:DYN:IL <val>              → 低电流 (A)
+          :SOUR:DYN:FREQ <val>            → 切换频率 (Hz)
+          :SOUR:DYN:HIGH:DWEL <sec>       → 高电流持续时间 (s)
+          :SOUR:DYN:LOW:DWEL <sec>        → 低电流持续时间 (s)
+          :SOUR:DYN:SLEW:RISE <A/μs>      → A点上升斜率
+          :SOUR:DYN:SLEW:FALL <A/μs>      → B点下降斜率
+          :SOUR:TRIG                      → 触发
+
+        与 IT8701P 驱动接口兼容。
+
+        Args:
+            i_high:     高电流电平 (A)
+            i_low:      低电流电平 (A)
+            frequency:  切换频率 (Hz)，与 dwell 二选一
+            slew_rate_a: A点(上升)斜率 (A/s)，自动转换 A/μs
+            slew_rate_b: B点(下降)斜率 (A/s)，自动转换 A/μs
+            high_dwell: 高电流持续时间 (s)，与 frequency 二选一
+            low_dwell:  低电流持续时间 (s)，与 frequency 二选一
+        """
+        # 清错误队列
+        self.send_command("*CLS", check_esr=False)
+
+        # 进入动态模式
         self.send_command(":SOUR:FUNC DYN")
+
+        # 电平设置
         self.send_command(f":SOUR:DYN:IH {i_high}")
         self.send_command(f":SOUR:DYN:IL {i_low}")
-        self.send_command(f":SOUR:DYN:FREQ {frequency}")
-        if rise_time is not None:
-            self.send_command(f":SOUR:DYN:RISE {rise_time}")
-        if fall_time is not None:
-            self.send_command(f":SOUR:DYN:FALL {fall_time}")
-        self.send_command(":SOUR:FUNC:MODE DYN")
+
+        # 持续时间（优先用 dwell，否则用 frequency 计算等宽方波）
+        if high_dwell is not None and low_dwell is not None:
+            self.send_command(f":SOUR:DYN:HIGH:DWEL {high_dwell}")
+            self.send_command(f":SOUR:DYN:LOW:DWEL {low_dwell}")
+        elif frequency is not None and frequency > 0:
+            t = 0.5 / frequency
+            self.send_command(f":SOUR:DYN:HIGH:DWEL {t}")
+            self.send_command(f":SOUR:DYN:LOW:DWEL {t}")
+
+        # 斜率设置（slew_rate 单位 A/s → 转换 A/μs）
+        if slew_rate_a is not None and slew_rate_a > 0:
+            self.send_command(f":SOUR:DYN:SLEW:RISE {slew_rate_a / 1_000_000:.6f}")
+        if slew_rate_b is not None and slew_rate_b > 0:
+            self.send_command(f":SOUR:DYN:SLEW:FALL {slew_rate_b / 1_000_000:.6f}")
+
+        # 清错误队列
+        self.send_command("*CLS", check_esr=False)
+
         self._current_mode = LoadMode.CC
+
+    def trigger(self, state="ON"):
+        """
+        触发瞬态模式。
+
+        Args:
+            state: "ON" 开启瞬态
+                   "OFF" 关闭瞬态
+        """
+        self.send_command(":TRIG")
 
     def run_dynamic(self, progress_callback=None):
         """
         启动动态拉载（瞬态模式）。
+
+        动态拉载由硬件持续运行，run_dynamic 仅负责触发和开启负载输入。
+        停止请调用 stop()。
         """
         self._stop_flag = False
         self.trigger()
         time.sleep(0.05)
         self.input_on()
-        self._stop_flag = True
+        # 注意：不要在这里设置 self._stop_flag = True，
+        # 否则动态拉载会在触发后立即被标记为停止
 
     # ================================================================
     #  5. LIST 功能
