@@ -119,7 +119,7 @@
             },
             "PDO5": {
                 "enabled": 1,
-                "value": "20V3A"
+                "value": "20V2A"
             },
             "PDO6": {
                 "enabled": 0,
@@ -209,8 +209,152 @@
             "product_type": "充电器",
             "vin": 90.0,
             "freq": 60.0,
+            "proto": "PD-PDO1",
+            "vout": 5.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 90.0,
+            "freq": 60.0,
+            "proto": "PD-PDO2",
+            "vout": 9.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 90.0,
+            "freq": 60.0,
+            "proto": "PD-PDO3",
+            "vout": 12.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 90.0,
+            "freq": 60.0,
+            "proto": "PD-PDO4",
+            "vout": 15.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 90.0,
+            "freq": 60.0,
             "proto": "PD-PDO5",
             "vout": 20.0,
+            "iout": 2.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 115.0,
+            "freq": 60.0,
+            "proto": "PD-PDO1",
+            "vout": 5.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 115.0,
+            "freq": 60.0,
+            "proto": "PD-PDO2",
+            "vout": 9.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 115.0,
+            "freq": 60.0,
+            "proto": "PD-PDO3",
+            "vout": 12.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 115.0,
+            "freq": 60.0,
+            "proto": "PD-PDO4",
+            "vout": 15.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 115.0,
+            "freq": 60.0,
+            "proto": "PD-PDO5",
+            "vout": 20.0,
+            "iout": 2.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 230.0,
+            "freq": 50.0,
+            "proto": "PD-PDO1",
+            "vout": 5.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 230.0,
+            "freq": 50.0,
+            "proto": "PD-PDO2",
+            "vout": 9.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 230.0,
+            "freq": 50.0,
+            "proto": "PD-PDO3",
+            "vout": 12.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 230.0,
+            "freq": 50.0,
+            "proto": "PD-PDO4",
+            "vout": 15.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 230.0,
+            "freq": 50.0,
+            "proto": "PD-PDO5",
+            "vout": 20.0,
+            "iout": 2.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 264.0,
+            "freq": 50.0,
+            "proto": "PD-PDO1",
+            "vout": 5.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 264.0,
+            "freq": 50.0,
+            "proto": "PD-PDO2",
+            "vout": 9.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 264.0,
+            "freq": 50.0,
+            "proto": "PD-PDO3",
+            "vout": 12.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 264.0,
+            "freq": 50.0,
+            "proto": "PD-PDO4",
+            "vout": 15.0,
             "iout": 3.0
         },
         {
@@ -219,7 +363,7 @@
             "freq": 50.0,
             "proto": "PD-PDO5",
             "vout": 20.0,
-            "iout": 3.0
+            "iout": 2.0
         }
     ]
 }
