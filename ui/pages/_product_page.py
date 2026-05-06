@@ -18,6 +18,23 @@ import tkinter as tk
 from tkinter import ttk
 
 
+
+
+def on_power_segment_toggle(app):
+    """
+    高压/低压功率分段勾选框切换：启用/禁用 HV/LV 功率填写框。
+    供 ui/_config_io.py 加载配置后调用，也供 config_ui 自身调用。
+    """
+    if app._power_segment_var.get() == 1:
+        app._hv_power_entry.config(state="normal")
+        app._lv_power_entry.config(state="normal")
+    else:
+        app._hv_power_entry.config(state="disabled")
+        app._lv_power_entry.config(state="disabled")
+        app._hv_power_var.set("")
+        app._lv_power_var.set("")
+
+
 def build_product_info_page(parent, app):
     """
     产品信息配置页面。

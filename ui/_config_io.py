@@ -150,7 +150,8 @@ def load_config(app, path: str):
     app._power_segment_var.set(pi.get("power_segment", 0))
     app._hv_power_var.set(pi.get("hv_power", ""))
     app._lv_power_var.set(pi.get("lv_power", ""))
-    app._on_power_segment_toggle()   # 根据勾选状态刷新HV/LV读写框状态
+    from ui.pages._product_page import on_power_segment_toggle as _opst
+    on_power_segment_toggle(app)   # 根据勾选状态刷新HV/LV读写框状态
 
     pt = pi.get("product_types", {})
     for label, var in app._prod_type_vars.items():

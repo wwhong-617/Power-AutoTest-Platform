@@ -15,30 +15,13 @@ if _project_root not in sys.path:
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-import json
 import time
 import traceback
-import warnings
-import math
 
 # 从 test_engine 导入用例注册表（唯一数据源）
 from test_engine import TestEngine
 from test_cases.flow_descriptions import FLOW_DESCRIPTIONS
-from test_cases.flow_descriptions import FLOW_DESCRIPTIONS
 from ui._engine_api import EngineAPI
-
-# 导入配置 Schema（统一数据结构）
-try:
-    from config_schema import (
-        SPECS_KEYS, PROTECTION_LOGIC_FIELDS, DYN_ROW_FIELDS, DYN_COLS,
-        COND_FIELDS,
-        _to_float, _to_int, _safe_float,
-        rows_to_dicts, dicts_to_rows,
-        build_specs_flat, build_protection_flat,
-    )
-    _SCHEMA_IMPORTED = True
-except ImportError:
-    _SCHEMA_IMPORTED = False
 
 # 配置持久化（序列化/反序列化）
 from ui._config_io import save_config, load_config
@@ -126,15 +109,6 @@ class ConfigUI(EngineAPI):
         f_menu.add_command(label="保存配置...", command=self.save_config)
         f_menu.add_separator()
         f_menu.add_command(label="退出", command=self.root.quit)
-        # 设备上位机菜单（暂无效，等待后续开发）
-        # dev_menu = tk.Menu(menubar, tearoff=0)
-        # menubar.add_cascade(label="设备上位机", menu=dev_menu)
-        # dev_menu.add_command(label="AC源", command=lambda: self._open_device_panel("AC_SOURCE"))
-        # dev_menu.add_command(label="DC源", command=lambda: self._open_device_panel("DC_SOURCE"))
-        # dev_menu.add_command(label="示波器", command=lambda: self._open_device_panel("OSC"))
-        # dev_menu.add_command(label="功率计", command=lambda: self._open_device_panel("POWER_METER"))
-        # dev_menu.add_command(label="电子负载", command=lambda: self._open_device_panel("ELOAD"))
-        # dev_menu.add_command(label="诱骗器", command=lambda: self._open_device_panel("SNIFFER"))
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="帮助", menu=help_menu)
         help_menu.add_command(label="平台应用指导书", command=self._open_help)
@@ -166,8 +140,7 @@ class ConfigUI(EngineAPI):
         build_test_cases_page(page5, self)
         # 启动时自动加载上次配置
         self._try_load_last_config()
-    def _open_device_panel(self, key):
-        self._log("[OK] " + key)
+
     def _open_help(self):
         import webbrowser, os
         from tkinter import messagebox
@@ -179,17 +152,6 @@ class ConfigUI(EngineAPI):
     def _on_device_check_changed(self, key):
         """勾选框状态变化时的回调（暂不需要特殊处理）"""
         pass
-
-    def _on_power_segment_toggle(self):
-        """高低压功率分段勾选框切换：启用/禁用HV/LV功率填写框"""
-        if self._power_segment_var.get() == 1:
-            self._hv_power_entry.config(state="normal")
-            self._lv_power_entry.config(state="normal")
-        else:
-            self._hv_power_entry.config(state="disabled")
-            self._lv_power_entry.config(state="disabled")
-            self._hv_power_var.set("")
-            self._lv_power_var.set("")
 
     # 扫描 / 连接 / 断开
     # ------------------------------------------------------------------
@@ -425,9 +387,10 @@ class ConfigUI(EngineAPI):
 
     def _apply_filtered_conditions(self, selected_case=None, refresh_all=False, update_tree=True):
         """
-        根据每个测试用例的 case_key（英文名）从全量条件中筛选出专属条件，
-        存入 self._filtered_conditions = {case_key: [(vin, freq, proto_label, vout, iout, product_type), ...]}
-        同时更新下方 Treeview 的显示（update_tree=True 时）。
+        根据用户选中的用例，从全局测试条件中筛选出每个用例专属的条件子集。
+
+        结果写入 self._filtered_conditions = {case_key: [row_dict, ...]}
+        同时刷新下方 Treeview 显示（update_tree=True 时）。
 
         Args:
             selected_case: 英文 case_key，仅刷新这一个用例（点击名称时传入）
@@ -449,11 +412,11 @@ class ConfigUI(EngineAPI):
             filtered = self._filter_conditions_by_case(en_key, self._source_conditions)
             self._filtered_conditions[en_key] = filtered
 
-
-        # ---- 更新下方 Treeview 显示 ----
+        # ---- 刷新下方 Treeview 显示 ----
         if not update_tree:
-            return  # 仅更新 _filtered_conditions，不动树
+            return
 
+        display_rows = self._build_filtered_display_rows(checked_keys)
         tree = self._filtered_cond_tree
         tree.delete(*tree.get_children())
 
@@ -461,12 +424,25 @@ class ConfigUI(EngineAPI):
             tree.insert("", "end", values=("请在左侧选择测试用例", "", "", "", "", ""))
             return
 
+        if not display_rows:
+            tree.insert("", "end", values=("无匹配的测试条件", "", "", "", "", ""))
+            return
+
+        for row in display_rows:
+            tree.insert("", "end", values=row)
+
+    def _build_filtered_display_rows(self, checked_keys):
+        """
+        将 self._filtered_conditions 中指定用例的行合并、去重、格式化，
+        返回 [(ptype, vin_str, freq_str, proto, ov_str, oi_str), ...]
+        """
         seen = set()
         display_rows = []
         for case_key in checked_keys:
             en_key = self._case_cn_to_en.get(case_key, case_key)
             for row in self._filtered_conditions.get(en_key, []):
-                key = (row["vin"], row["freq"], row["proto"], row["vout"], row["iout"], row.get("product_type", "charger"))
+                key = (row["vin"], row["freq"], row["proto"],
+                       row["vout"], row["iout"], row.get("product_type", "charger"))
                 if key not in seen:
                     seen.add(key)
                     vin = row["vin"]
@@ -480,13 +456,7 @@ class ConfigUI(EngineAPI):
                     ov_str = str(int(ov)) if ov and ov == int(ov) else (str(ov) if ov else "—")
                     oi_str = str(round(oi, 2)) if oi else "—"
                     display_rows.append((ptype, vin_str, freq_str, proto, ov_str, oi_str))
-
-        if not display_rows:
-            tree.insert("", "end", values=("无匹配的测试条件", "", "", "", "", ""))
-            return
-
-        for row in display_rows:
-            tree.insert("", "end", values=row)
+        return display_rows
 
     def _log(self, msg: str):
         """向顶部日志区域写入带时间戳的消息"""
