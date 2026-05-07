@@ -61,6 +61,8 @@ class EngineAPI:
 
         input_lo       = _safe_float(self._input_voltage_lo_var.get(), 90.0)
         input_hi       = _safe_float(self._input_voltage_hi_var.get(), 264.0)
+        _log("DEBUG", f"[_build_test_engine_config] input_voltage: {input_lo}V ~ {input_hi}V")
+        _log("DEBUG", f"[_build_test_engine_config] pwr_out_v_ch={self._pwr_out_v_ch_var.get().strip()} pwr_in_v_ch={self._pwr_in_v_ch_var.get().strip()}")
         output_voltage_min = _safe_float(self._output_voltage_min_var.get(), None)
         output_voltage_max = _safe_float(self._output_voltage_max_var.get(), 12.0)
         output_power   = _safe_float(self._output_power_var.get(), 65.0)
@@ -109,8 +111,8 @@ class EngineAPI:
         test_params = {
             "pwr_in_v_ch":  self._pwr_in_v_ch_var.get().strip() or "CH1",
             "pwr_in_i_ch":  self._pwr_in_i_ch_var.get().strip() or "CH1",
-            "pwr_out_v_ch": self._pwr_out_v_ch_var.get().strip() or "CH1",
-            "pwr_out_i_ch": self._pwr_out_i_ch_var.get().strip() or "CH1",
+            "pwr_out_v_ch": self._pwr_out_v_ch_var.get().strip() or "CH2",  # 默认CH2（物理接线：CH1=输入侧，CH2=输出侧）
+            "pwr_out_i_ch": self._pwr_out_i_ch_var.get().strip() or "CH2",
             "eload_vout1_ch": self._eload_vout1_ch_var.get().strip() or "CH1",
             "eload_vout2_ch": self._eload_vout2_ch_var.get().strip() or "CH2",
             "dyn_large":    [self._dyn_large_tree.item(r)["values"]
@@ -193,9 +195,25 @@ class EngineAPI:
         cfg = self._build_test_engine_config(checked)
         self._last_test_config = cfg
 
-        # 补救：OSC 通道配置
+        # ── 设备初始化：写入通道角色（仪器 initialize 统一在 engine 层执行）──
+        test_settings = cfg.get("test_settings", {})
+        test_params   = cfg.get("test_params", {})
+        self._append_run_log("[设备初始化] 写入通道角色...")
+
+        # 写入 WT333E 功率计通道角色
+        pwrmeter = None
+        if hasattr(self, '_instrument_manager') and self._instrument_manager:
+            mgr_ch_cfg = {**test_settings, **test_params}
+            self._instrument_manager.apply_channel_roles(mgr_ch_cfg)
+            pwrmeter = self._instrument_manager._instruments.get("WT333E") or self._instrument_manager._instruments.get("POWER_METER")
+        if pwrmeter and hasattr(pwrmeter, '_input_ch'):
+            self._append_run_log("[设备初始化] WT333E 通道: 输入=CH%d 输出=CH%d" % (pwrmeter._input_ch+1, pwrmeter._output_ch+1))
+        else:
+            self._append_run_log("[设备初始化] WT333E 未连接，跳过")
+
+        # 写入示波器通道角色（osc._osc_ch_config 供 engine 层 initialize_all_instruments() 使用）
         osc = self._instruments.get("OSC")
-        if osc:
+        if osc and osc.is_connected():
             osc._osc_ch_config = {
                 "osc_input_ch":    self._osc_in_ch_var.get().strip()   or "CH4",
                 "osc_output_ch":   self._osc_out_ch_var.get().strip()  or "CH2",
@@ -204,7 +222,14 @@ class EngineAPI:
                 "osc_output_attn": float(self._osc_out_attn_var.get().strip() or "1.0"),
                 "osc_dynamic_attn": float(self._osc_dyn_attn_var.get().strip() or "1.0"),
             }
-            osc.initialize()
+            self._append_run_log("[设备初始化] 示波器通道: 输入=%s 输出=%s 动态=%s" % (
+                osc._osc_ch_config["osc_input_ch"],
+                osc._osc_ch_config["osc_output_ch"],
+                osc._osc_ch_config["osc_dynamic_ch"]))
+        else:
+            self._append_run_log("[设备初始化] 示波器未连接，跳过")
+
+        self._append_run_log("[设备初始化] 完成（仪器 initialize 将在 engine 层统一执行）\n")
 
         from test_engine import TestEngine
         self._engine = TestEngine(cfg, self._instruments, instrument_manager=self._instrument_manager)

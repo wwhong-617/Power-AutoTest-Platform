@@ -1,54 +1,55 @@
-# Python
+# Temporary debug/scan scripts
+_*.py
+_check_*.py
+_fix_*.py
+_scan*.py
+_verify*.py
+_debug*.py
+_trace*.py
+_read*.py
+_analyze*.py
+_audit*.py
+_restore*.py
+_backup*.py
+_deep*.py
+_direct*.py
+_indent*.py
+_inspect*.py
+_ivrt*.py
+_sim*.py
+_icols*.py
+_ebg*.txt
+_scan*.txt
+_debug*.txt
+_ivrt_check.txt
+_ivrt_ps.py
+_out.txt
+_scan_out.txt
+_trace_out.txt
+_debug_te.txt
+_debug_osc.txt
+_eload_ch_check.py
+_find*.py
+_rm_dup_map.py
+
+# Python cache
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+*.pyc
+*.pyo
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+# Results & logs
+ui/results/
+logs/
+*.log
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Test results and logs
-results/
-logs/
-*.log
+# PDF files (not source code)
+*.pdf
 
-# Local config (may contain instrument IPs/passwords)
-.last_config
-config_local.py
-*.bak
-
-# Personal notes
-MEMORY.md
-
-# PDF datasheets (keep only source code)
-**/*.pdf
+# Build artifacts
+build/
+dist/
+*.spec

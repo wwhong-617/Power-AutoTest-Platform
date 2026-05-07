@@ -90,7 +90,7 @@ class IT8511(BaseElectronicLoad):
 
     def _send_initial_commands(self):
         self.send_command("*CLS", check_esr=False)
-        self.send_command("SYST:REM")
+        self.send_command("SYST:REM", check_esr=False)
 
     def _validate_identity(self) -> bool:
         if any(x in self._idn for x in ["IT8511", "IT8500", "ITECH", "SIMULATION"]):
@@ -105,10 +105,10 @@ class IT8511(BaseElectronicLoad):
         """
         电子负载初始化：*RST 复位 → *CLS 清除状态 → SYST:REM 进入远程。
         """
-        self.send_command("*RST")
+        self.send_command("*RST", check_esr=False)
         time.sleep(0.5)
         self.send_command("*CLS", check_esr=False)
-        self.send_command("SYST:REM")
+        self.send_command("SYST:REM", check_esr=False)
 
     # ================================================================
     #  2. 负载 ON / OFF
@@ -122,28 +122,28 @@ class IT8511(BaseElectronicLoad):
             current:   目标电流 (A)
             slew_rate: 可选，电流上升斜率 (A/s)
         """
-        self.send_command(":SOUR:FUNC CC")
+        self.send_command(":SOUR:FUNC CC", check_esr=False)
         self.send_command(f":SOUR:CURR {current}")
-        self.send_command(":SOUR:CURR:PROT ON")
+        self.send_command(":SOUR:CURR:PROT ON", check_esr=False)
         if slew_rate is not None:
             self.send_command(f":SOUR:CURR:SLOPE {slew_rate}")
         self._current_mode = LoadMode.CC
 
     def set_mode_cv(self, voltage: float):
         """设置恒压模式 (CV)"""
-        self.send_command(":SOUR:FUNC CV")
+        self.send_command(":SOUR:FUNC CV", check_esr=False)
         self.send_command(f":SOUR:VOLT {voltage}")
         self._current_mode = LoadMode.CV
 
     def set_mode_cr(self, resistance: float):
         """设置恒阻模式 (CR)"""
-        self.send_command(":SOUR:FUNC CR")
+        self.send_command(":SOUR:FUNC CR", check_esr=False)
         self.send_command(f":SOUR:RES {resistance}")
         self._current_mode = LoadMode.CR
 
     def set_mode_cp(self, power: float):
         """设置恒功模式 (CP)"""
-        self.send_command(":SOUR:FUNC CP")
+        self.send_command(":SOUR:FUNC CP", check_esr=False)
         self.send_command(f":SOUR:POW {power}")
         self._current_mode = LoadMode.CP
 
@@ -155,11 +155,11 @@ class IT8511(BaseElectronicLoad):
 
     def input_on(self):
         """开启负载输入"""
-        self.send_command(":SOUR:INP ON")
+        self.send_command(":SOUR:INP ON", check_esr=False)
 
     def input_off(self):
         """关闭负载输入"""
-        self.send_command(":SOUR:INP OFF")
+        self.send_command(":SOUR:INP OFF", check_esr=False)
 
     # ================================================================
     #  3. 短路 ON / OFF
@@ -169,17 +169,17 @@ class IT8511(BaseElectronicLoad):
         """
         开启短路：使用 :SOUR:INP:SHOR ON 专用命令。
         """
-        self.send_command(":SOUR:INP OFF")       # 先关断
+        self.send_command(":SOUR:INP OFF", check_esr=False)       # 先关断
         self.send_command("*CLS", check_esr=False)                 # 清保护
-        self.send_command(":SOUR:INP:SHOR ON")   # 激活短路功能
-        self.send_command(":SOUR:INP ON")        # 闭合输入，短路生效
+        self.send_command(":SOUR:INP:SHOR ON", check_esr=False)   # 激活短路功能
+        self.send_command(":SOUR:INP ON", check_esr=False)        # 闭合输入，短路生效
         time.sleep(0.3)
         return True
 
     def short_off(self):
         """关闭短路：:SOUR:INP:SHOR OFF 解除短路模式"""
-        self.send_command(":SOUR:INP OFF")        # 先关断
-        self.send_command(":SOUR:INP:SHOR OFF")  # 解除短路
+        self.send_command(":SOUR:INP OFF", check_esr=False)        # 先关断
+        self.send_command(":SOUR:INP:SHOR OFF", check_esr=False)  # 解除短路
         self.send_command("*CLS", check_esr=False)                 # 清保护
 
     def set_dynamic_mode(self,
@@ -219,7 +219,7 @@ class IT8511(BaseElectronicLoad):
         self.send_command(":CLS", check_esr=False)
 
         # 设置 CC 模式
-        self.send_command(":FUNC CC")
+        self.send_command(":FUNC CC", check_esr=False)
 
         # 设置动态参数
         self.send_command(f"DYN:HIGH {i_high}")
@@ -237,7 +237,7 @@ class IT8511(BaseElectronicLoad):
         elif slew_rate is not None:
             self.send_command(f"DYN:SLEW {slew_rate}")
 
-        self.send_command("DYN:MODE CONTINUOUS")
+        self.send_command("DYN:MODE CONTINUOUS", check_esr=False)
         if frequency is not None:
             self.send_command(f"DYN:FREQ {frequency}")
 
@@ -245,7 +245,7 @@ class IT8511(BaseElectronicLoad):
         self.send_command(":CLS", check_esr=False)
 
         # 触发（对应 trigger()）
-        self.send_command(":TRIG")
+        self.send_command(":TRIG", check_esr=False)
 
         self._current_mode = LoadMode.CC
 
@@ -257,7 +257,7 @@ class IT8511(BaseElectronicLoad):
             state: "ON" 开启瞬态
                    "OFF" 关闭瞬态
         """
-        self.send_command(":TRIG")
+        self.send_command(":TRIG", check_esr=False)
 
     def run_dynamic(self, progress_callback=None):
         """
@@ -320,7 +320,7 @@ class IT8511(BaseElectronicLoad):
                              返回 False 时停止
         """
         self._stop_flag = False
-        self.send_command(":SOUR:TRIG:SOUR IMM")
+        self.send_command(":SOUR:TRIG:SOUR IMM", check_esr=False)
         self.input_on()
 
         # IT8500 LIST 由硬件控制时序，这里轮询进度
@@ -344,7 +344,7 @@ class IT8511(BaseElectronicLoad):
         self._stop_flag = True
         try:
             self.input_off()
-            self.send_command(":SOUR:FUNC:MODE FIXED")
+            self.send_command(":SOUR:FUNC:MODE FIXED", check_esr=False)
         except Exception:
             pass
 
@@ -379,7 +379,7 @@ class IT8511(BaseElectronicLoad):
             slew_rate: 可选，扫描斜率 (A/s)
             mode:      扫描模式，"CC" / "CV" / "CR" / "CP"
         """
-        self.send_command(":SOUR:FUNC SWEEP")
+        self.send_command(":SOUR:FUNC SWEEP", check_esr=False)
         self.send_command(f":SOUR:SWE:STAR {start}")
         self.send_command(f":SOUR:SWE:STOP {stop}")
         self.send_command(f":SOUR:SWE:STEP {step}")
@@ -399,7 +399,7 @@ class IT8511(BaseElectronicLoad):
         """
         self._stop_flag = False
         self.send_command(f":SOUR:SWE:COUN {cycles}")
-        self.send_command(":SOUR:TRIG:SOUR IMM")
+        self.send_command(":SOUR:TRIG:SOUR IMM", check_esr=False)
         self.input_on()
 
         total_steps = 0

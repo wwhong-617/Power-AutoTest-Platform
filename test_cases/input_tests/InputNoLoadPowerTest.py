@@ -299,7 +299,7 @@ class InputNoLoadPowerTest(TestCase):
                 while self.is_pause_requested() and not self.is_stop_requested():
                     time.sleep(0.2)
                 try:
-                    p = pm.measure_power(channel=self.pwr_in_v_ch)
+                    p = pm.measure_input_power()
                     power_samples.append(p)
                     if i % 5 == 0:
                         info(f"[NLT] 功率采样 {i + 1}/{self.measure_count} | {p:.4f}W ({self.pwr_in_v_ch})")

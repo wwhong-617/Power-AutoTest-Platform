@@ -14,7 +14,7 @@ SCPI 命令参考（按类别整理）
 
 水平控制（时基）
   :TIM:SCAL <value>          时基 (s/div)，如 0.001=1ms/div，20=20s/div
-  :TIM:OFFS <value>          时基偏移 / 水平位置 (s)
+  :TIMEBASE:DELAY <value>     时基偏移 / 水平位置 (s)（:TIM:DEL 为缩写）
   :TIM:MODE <MAIN|ROLL>      时基模式：MAIN 普通 / ROLL 滚动
   注意：时基 ≥ 1s/div 时自动进入 RTIM 滚动模式
 
@@ -53,18 +53,21 @@ SCPI 命令参考（按类别整理）
   :MEASURE:CLE                 清除所有测量项
 
 光标
-  :CURS:MODE <mode>           光标模式：OFF / MANUAL / TRACK / DELTA
-  :CURS:SOUR <source>         光标源：CHAN1~4 / FUNC / MATH
-  :CURS:A/BX <value>          光标 A/B 的 X 位置 (s)
-  :CURS:A/BY <value>          光标 A/B 的 Y 位置 (V)
-  :CURS:XDIF?                 查询 X 方向差值（光标 A-B）
-  :CURS:YDIF?                 查询 Y 方向差值
-  :CURS:HFRE?                 查询频率（根据光标差值计算）
-  :CURS:VDIF?                 查询垂直电压差值
+  :MARK:MODE <mode>           光标模式：OFF / MANUAL / TRACK / DELTA
+  :MARK:X1Y1source <src>      光标源（X1/Y1 关联）：CHAN1~4 / FUNC / MATH
+  :MARK:X2Y2source <src>      光标源（X2/Y2 关联）：CHAN1~4 / FUNC / MATH
+  :MARK:X1Position <val>       光标 X1 位置 (s)
+  :MARK:Y1Position <val>       光标 Y1 位置 (V)
+  :MARK:X2Position <val>       光标 X2 位置 (s)
+  :MARK:Y2Position <val>       光标 Y2 位置 (V)
+  :MARK:XDELta?               查询 X 方向差值（X2-X1）
+  :MARK:YDELta?               查询 Y 方向差值（Y2-Y1）
+  :MARK:HFRE?                 查询频率（根据光标差值计算）
+  :MARK:VDIF?                 查询垂直电压差值
 
 波形数据
   :WAV:SOUR CHAN<N>           波形数据源
-  :WAV:MODE RAW               波形模式：RAW / NORMAL / MAX
+  :WAVEFORM:POINTS:MODE <mode> 波形模式：NORMal / MAXimum / RAW
   :WAV:FORM BYTE               数据格式：BYTE / WORD / ASC
   :WAV:PRE?                   查询波形前导信息（10个参数）
   :WAV:DATA?                  获取波形原始数据（二进制，#NDDDD 格式）
@@ -119,6 +122,58 @@ class DSOX4024A(BaseOscilloscope):
             0.05, 0.1, 0.2, 0.5,
             1, 2, 5, 10, 20, 50, 100, 200, 500, 1000
         ]
+        # 通道角色（整数 1-4，由 instrument_manager.connect_all 后写入）
+        self._input_ch   = 4   # AC 输入电压通道
+        self._output_ch  = 2   # DUT 输出电压通道
+        self._dynamic_ch = 1   # 动态带载电压通道
+
+    def set_channel_roles(self, input_ch: str = None, output_ch: str = None, dynamic_ch: str = None):
+        """
+        设置通道角色（由 instrument_manager 在测试运行前调用）。
+        参数为字符串如 "CH2"，内部转为整数 2。
+        """
+        if input_ch is not None:
+            self._input_ch = self._parse_ch(input_ch)
+        if output_ch is not None:
+            self._output_ch = self._parse_ch(output_ch)
+        if dynamic_ch is not None:
+            self._dynamic_ch = self._parse_ch(dynamic_ch)
+        import logging
+        logger = logging.getLogger("PowerAutoTest")
+        logger.info(f"[DSOX4024A] 通道角色: 输入=CH{self._input_ch} 输出=CH{self._output_ch} 动态=CH{self._dynamic_ch}")
+
+    def _parse_ch(self, ch: str) -> int:
+        """将 "CH2" → 2, "CH4" → 4"""
+        return int(ch.replace("CH", "").replace("ch", ""))
+
+    # ================================================================
+    #  语义测量方法（推荐使用）
+    # ================================================================
+    # 内部所有 measure_voltage_* 方法统一用 self._output_ch
+
+    def measure_output_voltage_max(self) -> float:
+        """测量输出通道电压最大值 (V)"""
+        return self.measure_voltage_max(self._output_ch)
+
+    def measure_output_voltage_min(self) -> float:
+        """测量输出通道电压最小值 (V)"""
+        return self.measure_voltage_min(self._output_ch)
+
+    def measure_input_voltage_max(self) -> float:
+        """测量输入通道电压最大值 (V)"""
+        return self.measure_voltage_max(self._input_ch)
+
+    def measure_input_voltage_min(self) -> float:
+        """测量输入通道电压最小值 (V)"""
+        return self.measure_voltage_min(self._input_ch)
+
+    def measure_dynamic_voltage_max(self) -> float:
+        """测量动态通道电压最大值 (V)"""
+        return self.measure_voltage_max(self._dynamic_ch)
+
+    def measure_dynamic_voltage_min(self) -> float:
+        """测量动态通道电压最小值 (V)"""
+        return self.measure_voltage_min(self._dynamic_ch)
 
     # ================================================================
     #  私有工具方法
@@ -169,7 +224,9 @@ class DSOX4024A(BaseOscilloscope):
         import time
         self.send_command("*RST")
         time.sleep(3.0)
-        self.send_command(":CHAN1:DISP OFF")
+        # 先关闭所有通道，再由具体用例按需开启
+        for ch in range(1, 5):
+            self.send_command(f":CHAN{ch}:DISP OFF")
 
         # 从 instrument_manager 写入的 UI 配置读取通道和衰减比
         ch_config = getattr(self, "_osc_ch_config", {})
@@ -260,7 +317,7 @@ class DSOX4024A(BaseOscilloscope):
         设置时基偏移 (秒)。
         即触发位置相对于屏幕中心的时间偏移。
         """
-        self.send_command(f":TIM:OFFS {offset}")
+        self.send_command(f":TIM:DEL {offset}")
 
     def set_timebase_mode(self, mode: str):
         """
@@ -1026,7 +1083,7 @@ class DSOX4024A(BaseOscilloscope):
         valid = ["OFF", "MANUAL", "TRACK", "DELTA"]
         if mode not in valid:
             raise ValueError(f"Invalid cursor mode: {mode}. Must be one of {valid}")
-        self.send_command(f":CURS:MODE {mode}")
+        self.send_command(f":MARK:MODE {mode}")
 
     def set_cursor_source(self, source: str):
         """
@@ -1039,7 +1096,7 @@ class DSOX4024A(BaseOscilloscope):
         valid = ["CHAN1", "CHAN2", "CHAN3", "CHAN4", "FUNC", "MATH"]
         if source not in valid:
             raise ValueError(f"Invalid cursor source: {source}. Must be one of {valid}")
-        self.send_command(f":CURS:SOUR {source}")
+        self.send_command(f":MARK:X1Y1source {source}")
 
     def set_cursor_position(self, cursor: str, x: float = None, y: float = None):
         """
@@ -1053,10 +1110,17 @@ class DSOX4024A(BaseOscilloscope):
         cursor = cursor.upper()
         if cursor not in ["A", "B"]:
             raise ValueError("cursor must be 'A' or 'B'")
-        if x is not None:
-            self.send_command(f":CURS:{cursor}X {x}")
-        if y is not None:
-            self.send_command(f":CURS:{cursor}Y {y}")
+        # 光标 A -> X1/Y1，光标 B -> X2/Y2
+        if cursor == "A":
+            if x is not None:
+                self.send_command(f":MARK:X1Position {x}")
+            if y is not None:
+                self.send_command(f":MARK:Y1Position {y}")
+        elif cursor == "B":
+            if x is not None:
+                self.send_command(f":MARK:X2Position {x}")
+            if y is not None:
+                self.send_command(f":MARK:Y2Position {y}")
 
     def get_cursor_position(self, cursor: str) -> dict:
         """
@@ -1074,9 +1138,13 @@ class DSOX4024A(BaseOscilloscope):
         if not self._connected:
             return {"x": 0.0, "y": 0.0}
         try:
-            self.send_command(":CURS:MODE DELTA")
-            x = float(self.query(f":CURS:{cursor}X?"))
-            y = float(self.query(f":CURS:{cursor}Y?"))
+            self.send_command(":MARK:MODE DELTA")
+            if cursor == "A":
+                x = float(self.query(":MARK:X1Position?"))
+                y = float(self.query(":MARK:Y1Position?"))
+            else:
+                x = float(self.query(":MARK:X2Position?"))
+                y = float(self.query(":MARK:Y2Position?"))
             return {"x": x, "y": y}
         except Exception:
             return {"x": 0.0, "y": 0.0}
@@ -1095,12 +1163,12 @@ class DSOX4024A(BaseOscilloscope):
         if not self._connected:
             return {"delta_x": 0.0, "delta_y": 0.0, "freq": 0.0}
         try:
-            self.send_command(":CURS:MODE DELTA")
-            dx = float(self.query(":CURS:XDIF?"))
-            dy = float(self.query(":CURS:YDIF?"))
+            self.send_command(":MARK:MODE DELTA")
+            dx = float(self.query(":MARK:XDELta?"))
+            dy = float(self.query(":MARK:YDELta?"))
             freq = 0.0
             try:
-                freq = float(self.query(":CURS:HFRE?"))
+                freq = float(self.query(":MARK:HFRE?"))
             except Exception:
                 pass
             return {"delta_x": dx, "delta_y": dy, "freq": freq}
@@ -1114,7 +1182,7 @@ class DSOX4024A(BaseOscilloscope):
         if not self._connected:
             return 0.0
         try:
-            return float(self.query(":CURS:VDIF?"))
+            return float(self.query(":MARK:VDIF?"))
         except Exception:
             return 0.0
 
@@ -1145,7 +1213,7 @@ class DSOX4024A(BaseOscilloscope):
 
         try:
             self.send_command(f":WAV:SOUR CHAN{channel}")
-            self.send_command(":WAV:MODE RAW")
+            self.send_command(":WAVEFORM:POINTS:MODE RAW")
             self.send_command(":WAV:FORM BYTE")
 
             preamble_str = self.query(":WAV:PRE?")

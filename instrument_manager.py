@@ -133,8 +133,15 @@ class InstrumentManager:
                 info(f"[InstrumentManager] {cfg_key} 未启用，跳过")
                 continue
 
+            # 兼容新旧两种配置格式：
+            #   新格式：conn_type / visa_address（config_ui 扫描后写入）
+            #   旧格式：comm / addr（直接编辑配置文件时使用）
             conn_type = inst_cfg.get("conn_type", "").strip()
+            if not conn_type:
+                conn_type = inst_cfg.get("comm", "").strip()
             address = inst_cfg.get("visa_address", "").strip()
+            if not address:
+                address = inst_cfg.get("addr", "").strip()
 
             if not address:
                 warning(f"[InstrumentManager] {cfg_key} 无地址，跳过")
@@ -400,6 +407,41 @@ class InstrumentManager:
 
     def is_all_connected(self) -> bool:
         return all(self._connection_results.values()) if self._connection_results else False
+
+    def apply_channel_roles(self, channel_config: dict):
+        """
+        将 UI 通道配置写入已连接的仪器对象。
+        在仪器连接后、测试运行前调用。
+
+        channel_config 格式（所有键可选）：
+            pwr_in_v_ch     -> WT333E 输入电压/电流/功率通道（字符串"CH1"/"CH2"）
+            pwr_out_v_ch    -> WT333E 输出电压/电流/功率通道
+            osc_input_ch    -> 示波器输入通道（字符串"CH1"~"CH4"）
+            osc_output_ch   -> 示波器输出通道
+            osc_dynamic_ch  -> 示波器动态通道
+            eload_vout1_ch  -> 电子负载电压采样通道
+        """
+        import logging
+        logger = logging.getLogger("PowerAutoTest")
+
+        # ---- WT333E 功率计 ----
+        pwrmeter = self._instruments.get("WT333E") or self._instruments.get("POWER_METER")
+        if pwrmeter and hasattr(pwrmeter, "set_channel_roles"):
+            inp = channel_config.get("pwr_in_v_ch", "CH1")
+            out = channel_config.get("pwr_out_v_ch", "CH2")
+            pwrmeter.set_channel_roles(input_voltage_ch=inp, output_voltage_ch=out)
+            logger.info(f"[InstrumentManager] WT333E 通道角色: 输入={inp} 输出={out}")
+
+        # ---- 示波器 ----
+        osc = self._instruments.get("OSC")
+        if osc and hasattr(osc, "set_channel_roles"):
+            osc_cfg = {
+                "input_ch":  channel_config.get("osc_input_ch",   "CH4"),
+                "output_ch": channel_config.get("osc_output_ch",   "CH2"),
+                "dynamic_ch": channel_config.get("osc_dynamic_ch",  "CH1"),
+            }
+            osc.set_channel_roles(**osc_cfg)
+            logger.info(f"[InstrumentManager] 示波器通道: {osc_cfg}")
 
     def summary(self) -> Dict[str, Any]:
         """返回连接结果摘要"""

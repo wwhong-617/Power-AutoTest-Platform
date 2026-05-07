@@ -322,6 +322,33 @@ class TestEngine:
         """设置结果文件夹路径（供测试用例保存波形等文件）"""
         self._result_dir = result_dir
 
+
+    def initialize_all_instruments(self):
+        """
+        测试运行前一次性初始化所有已连接仪器。
+        等同于各仪器驱动的 initialize()，执行 *RST + 复位后配置。
+        此方法在 run_all() 的 for 循环前调用一次，per-case setup 不再重复调用。
+        """
+        info('[TestEngine] 开始全量初始化所有仪器...')
+        initialized = []
+        failed = []
+        for key, inst in self.instruments.items():
+            if inst and getattr(inst, '_connected', False):
+                if hasattr(inst, 'initialize'):
+                    try:
+                        inst.initialize()
+                        initialized.append(key)
+                        info(f'[TestEngine]   {key} initialize() 完成')
+                    except Exception as e:
+                        failed.append((key, str(e)))
+                        error(f'[TestEngine]   {key} initialize() 失败: {e}')
+                else:
+                    info(f'[TestEngine]   {key} 无 initialize() 方法，跳过')
+            else:
+                info(f'[TestEngine]   {key} 未连接，跳过')
+        info(f'[TestEngine] 全量初始化完成: 成功={len(initialized)} 失败={len(failed)}')
+        return initialized, failed
+
     def run_all(self) -> List[TestCase]:
         """
         批量执行所有用例。
@@ -337,6 +364,9 @@ class TestEngine:
         self._pause_requested = False
         self._stop_event.clear()
         self._results = []
+
+        # 全量初始化所有仪器（一次性，不在 per-case setup 中重复执行）
+        self.initialize_all_instruments()
 
         total = len(self.suite.cases)
         info(f"[TestEngine] 开始批量执行，共 {total} 个用例")

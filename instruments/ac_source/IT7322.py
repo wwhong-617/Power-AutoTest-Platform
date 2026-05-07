@@ -128,11 +128,11 @@ class IT7322(BaseACSource):
 
     def output_on(self):
         """开启输出"""
-        self.send_command("OUTP ON")
+        self.send_command("OUTP ON", check_esr=False)
 
     def output_off(self):
         """关闭输出"""
-        self.send_command("OUTP OFF")
+        self.send_command("OUTP OFF", check_esr=False)
 
     # ================================================================
     #  3. 电压 & 频率
@@ -386,4 +386,7 @@ class IT7322(BaseACSource):
 
     def clear_protection_alarm(self):
         """清除保护告警，恢复正常运行状态"""
-        self.send_command("OUTP:PROT:CLE")
+        # 先用 :CLS 清掉 ESR 里的历史保护标记，再发 PROT:CLE
+        self.send_command("*CLS", check_esr=False)
+        time.sleep(0.1)
+        self.send_command("OUTP:PROT:CLE", check_esr=False)

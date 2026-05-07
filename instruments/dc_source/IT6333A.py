@@ -89,11 +89,11 @@ class IT6333A(BaseDCSource):
 
     def output_on(self):
         """开启输出"""
-        self.send_command("OUTP ON")
+        self.send_command("OUTP ON", check_esr=False)
 
     def output_off(self):
         """关闭输出"""
-        self.send_command("OUTP OFF")
+        self.send_command("OUTP OFF", check_esr=False)
 
     def get_output_status(self) -> int:
         """
@@ -163,11 +163,11 @@ class IT6333A(BaseDCSource):
 
     def display_on(self):
         """开启前面板显示"""
-        self.send_command("DISP ON")
+        self.send_command("DISP ON", check_esr=False)
 
     def display_off(self):
         """关闭前面板显示（节省屏）"""
-        self.send_command("DISP OFF")
+        self.send_command("DISP OFF", check_esr=False)
 
     # ---------------------- 通道选择（多通道支持） ----------------------
 
@@ -264,15 +264,15 @@ class IT6333A(BaseDCSource):
         启动 List 扫描。
         必须在 list_configure() 之后调用。
         """
-        self.send_command("SOUR:FUNC:MODE LIST")
-        self.send_command("OUTP ON")
+        self.send_command("SOUR:FUNC:MODE LIST", check_esr=False)
+        self.send_command("OUTP ON", check_esr=False)
 
     def list_stop(self):
         """
         停止 List 扫描。
         """
-        self.send_command("OUTP OFF")
-        self.send_command("SOUR:FUNC:MODE VOLT")
+        self.send_command("OUTP OFF", check_esr=False)
+        self.send_command("SOUR:FUNC:MODE VOLT", check_esr=False)
 
     def list_query_voltages(self) -> list:
         """查询已配置的电压列表"""
@@ -318,5 +318,5 @@ class IT6333A(BaseDCSource):
         """
         中断 List 扫描并恢复到 CV 模式。
         """
-        self.send_command("OUTP OFF")
-        self.send_command("SOUR:FUNC:MODE VOLT")
+        self.send_command("OUTP OFF", check_esr=False)
+        self.send_command("SOUR:FUNC:MODE VOLT", check_esr=False)

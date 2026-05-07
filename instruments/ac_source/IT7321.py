@@ -9,50 +9,64 @@ ITECH IT7300 系列交流电源 SCPI 命令参考。
 IT7321 与 IT7322 同属 IT7300 系列，命令集完全兼容。
 具体型号差异仅在功率等级，驱动接口一致。
 
-SCPI 命令分类
+SCPI 命令（按设备手册，更新版）
 ══════════════════════════════════════════════════════
 
-初始化
+通用
   *IDN?                      查询仪器身份
   *RST                       复位
   *CLS                       清除状态寄存器
   SYST:REM                   进入远程控制模式
 
-开机 / 关机
-  OUTP ON                    开启输出
-  OUTP OFF                   关闭输出
+输出控制
+  OUTP ON | OFF              开启 / 关闭输出
+  OUTP?                      查询输出状态 (0=OFF, 1=ON)
 
 电压 & 频率
   SOUR:VOLT <value>          设置输出电压 (V)
+  SOUR:VOLT?                  查询输出电压
   SOUR:FREQ <value>          设置输出频率 (Hz)
-  [SOURce:]RANGe HIGH|AUTO   设置源档位（HIGH=高档位，AUTO=自动）
+  SOUR:FREQ?                  查询输出频率
+  RANGe HIGH|AUTO            电压电流量程（HIGH=高档位，AUTO=自动）
+
+上下限（限值保护）
+  CONF:VOLT:MAX <value>      设置电压上限
+  CONF:VOLT:MIN <value>      设置电压下限
+  CONF:FREQ:MAX <value>      设置频率上限
+  CONF:FREQ:MIN <value>      设置频率下限
+
+保护功能
+  CONF:PROT:CURR:RMS <value> 设置过流保护阈值（RMS，有效值）
+  CONF:PROT:CURR:RMS?        查询过流保护阈值
+  CONF:PROT:CURR:RMS:MODE DELay|IMMediate  过流保护模式
+  CONF:PROT:CURR:PEAK <value> 设置峰值过流保护阈值
+  CONF:PROT:CURR:PEAK?       查询峰值过流保护阈值
+  CONF:PROT:CURR:PEAK:MODE DELay|IMMediate  峰值过流保护模式
+  PROTection:CLEar           清除保护状态（需先排除故障）
+  STATus:QUEStionable:CONDition?  查询保护状态寄存器
+
+测量
   MEAS:VOLT?                 测量输出电压 (V)
   MEAS:CURR?                 测量输出电流 (A)
   MEAS:POW?                  测量有功功率 (W)
 
-序列功能（List 模式）
-  LIST:POIN <n>              设置列表点数
-  LIST:VOLT <v1>,<v2>,...   电压序列
-  LIST:FREQ <f1>,<f2>,...   频率序列
-  LIST:DWEL <t1>,<t2>,...   每步持续时间 (s)
-  LIST:COUN <n>              重复次数
-  SOUR:FUNC:MODE LIST        选择列表模式
-  SOUR:TRIG:SOUR IMM         触发源：立即
-  LIST:STEP <n>              每步采样点数（可选）
-  SOUR:FUNC:MODE FIXED       恢复固定模式
+LIST 序列
+  LIST:STATe DISable|ENABle  LIST 模式开关
+  LIST:STEP:COUNt <n>        设置 LIST 步数（1~100）
+  LIST:STEP:VOLT <idx>,<val> 设置第 idx 步电压 (V)
+  LIST:STEP:FREQ <idx>,<val> 设置第 idx 步频率 (Hz)
+  LIST:STEP:DWEL <idx>,<val> 设置第 idx 步持续时间 (s)
+  LIST:STEP:COUNt?           查询步数
+  LIST:STEP:VOLT? <idx>      查询第 idx 步电压
+  LIST:STEP:FREQ? <idx>      查询第 idx 步频率
+  LIST:STEP:DWEL? <idx>      查询第 idx 步持续时间
+  LIST:REPeat <n>            设置重复次数（1~10000）
+  LIST:REPeat?               查询重复次数
 
-保护功能
-  OUTP:PROT:VOLT <value>     设置 OVP 阈值 (V)
-  OUTP:PROT:VOLT:STAT ON/OFF OVP 使能
-  OUTP:PROT:CURR <value>     设置 OCP 阈值 (A)
-  OUTP:PROT:CURR:STAT ON/OFF OCP 使能
-  OUTP:PROT:POW <value>      设置 OPP 阈值 (W)
-  OUTP:PROT:POW:STAT ON/OFF OPP 使能
-  OUTP:PROT:STAT?            查询保护状态
-  OUTP:PROT:CLE              清除保护告警
-
-状态查询
-  STAT:OPER?                 查询工作状态寄存器
+状态寄存器
+  *ESR?                      标准事件状态寄存器
+  STATus:QUEStionable:CONDition?  查询条件寄存器
+  STATus:QUEStionable:EVENt?     查询事件寄存器（读后清零）
 """
 
 import time
@@ -75,12 +89,12 @@ class IT7321(BaseACSource):
     # ================================================================
 
     def _send_initial_commands(self):
-        """发送初始化命令"""
+        """发送初始化命令（连接时调用）。"""
         self.send_command("*CLS", check_esr=False)
         self.send_command("SYST:REM")
 
     def _validate_identity(self) -> bool:
-        """验证仪器身份"""
+        """验证仪器身份。"""
         if any(x in self._idn for x in ["IT7321", "IT7300", "ITECH", "SIMULATION"]):
             return True
         return False
@@ -91,10 +105,7 @@ class IT7321(BaseACSource):
 
     def initialize(self):
         """
-        交流源初始化：*RST 复位 → *CLS 清除状态 → SYST:REM 进入远程 → 电流量程设为 HIGH。
-
-        IT7321 为全范围线性源，0~300V 直接输出，无需电压档位切换。
-        电流量程默认设为 HIGH 档位，以支持较大电流输出。
+        交流源初始化：*RST 复位 → *CLS 清除状态 → SYST:REM 进入远程 → 档位设为 HIGH。
         """
         self.send_command("*RST")
         time.sleep(0.5)
@@ -107,19 +118,19 @@ class IT7321(BaseACSource):
     # ================================================================
 
     def output_on(self):
-        """开启输出"""
-        self.send_command("OUTP ON")
+        """开启输出。"""
+        self.send_command("OUTP ON", check_esr=False)
 
     def output_off(self):
-        """关闭输出"""
-        self.send_command("OUTP OFF")
+        """关闭输出。"""
+        self.send_command("OUTP OFF", check_esr=False)
 
     # ================================================================
     #  3. 电压 & 频率
     # ================================================================
 
     def set_voltage(self, volts: float):
-        """设置输出电压 (V)"""
+        """设置输出电压 (V)。"""
         self.send_command(f"SOUR:VOLT {volts}")
 
     def set_ac_source_range(self, range_mode: str):
@@ -128,10 +139,6 @@ class IT7321(BaseACSource):
 
         Args:
             range_mode: "HIGH" = 高档位，"AUTO" = 自动档位
-
-        IT7300 系列命令：[SOURce:]RANGe HIGH|AUTO
-        - HIGH：  高档位，适用较大功率/电流输出
-        - AUTO：  自动档位，仪器根据负载自动选择合适档位
         """
         mode = range_mode.upper()
         if mode not in ("HIGH", "AUTO"):
@@ -140,18 +147,16 @@ class IT7321(BaseACSource):
 
     def set_voltage_range(self, range_mode: str):
         """
-        设置输出电压档位（量程）。
-
-        IT7321 为全范围线性源，不支持电压档位切换，此方法为空操作。
+        IT7321 为全范围线性源，不支持独立电压档位切换，此方法为空操作。
         """
         pass
 
     def set_frequency(self, hz: float):
-        """设置输出频率 (Hz)"""
+        """设置输出频率 (Hz)。"""
         self.send_command(f"SOUR:FREQ {hz}")
 
     def measure_voltage(self) -> float:
-        """测量输出电压 (V)"""
+        """测量输出电压 (V)。"""
         if not self._connected:
             return 0.0
         try:
@@ -160,7 +165,7 @@ class IT7321(BaseACSource):
             return 0.0
 
     def measure_current(self) -> float:
-        """测量输出电流 (A)"""
+        """测量输出电流 (A)。"""
         if not self._connected:
             return 0.0
         try:
@@ -169,7 +174,7 @@ class IT7321(BaseACSource):
             return 0.0
 
     def measure_power(self) -> float:
-        """测量有功功率 (W)"""
+        """测量有功功率 (W)。"""
         if not self._connected:
             return 0.0
         try:
@@ -178,12 +183,19 @@ class IT7321(BaseACSource):
             return 0.0
 
     # ================================================================
-    #  4. 序列功能
+    #  4. LIST 序列
     # ================================================================
 
     def program_list(self, steps, cycles: int = 1):
         """
-        编程列表序列（List 模式）。
+        编程 LIST 序列（List 模式）。
+
+        IT7300 LIST 命令格式（按手册）：
+          LIST:STEP:COUNt <n>    — 设置总步数
+          LIST:STEP:VOLT <idx>,<val> — 第 idx 步电压
+          LIST:STEP:FREQ <idx>,<val> — 第 idx 步频率
+          LIST:STEP:DWEL <idx>,<val> — 第 idx 步持续时间 (s)
+          LIST:REPeat <n>        — 重复次数
 
         Args:
             steps:  序列列表，每项 (电压, 频率, 持续时间秒)
@@ -192,36 +204,43 @@ class IT7321(BaseACSource):
         """
         if not steps:
             return
-        n = len(steps)
-        voltages  = ",".join(str(s[0]) for s in steps)
-        freqs    = ",".join(str(s[1]) for s in steps)
-        dwell    = ",".join(str(s[2]) for s in steps)
 
-        self.send_command(f"LIST:POIN {n}")
-        self.send_command(f"LIST:VOLT {voltages}")
-        self.send_command(f"LIST:FREQ {freqs}")
-        self.send_command(f"LIST:DWEL {dwell}")
-        self.send_command(f"LIST:COUN {cycles}")
-        self.send_command("SOUR:FUNC:MODE LIST")
+        # 关闭 LIST 模式（安全）
+        self.send_command("LIST:STAT DIS", check_esr=False)
+
+        # 设置总步数
+        n = len(steps)
+        self.send_command(f"LIST:STEP:COUN {n}", check_esr=False)
+
+        # 逐步写入
+        for idx, (v, f, d) in enumerate(steps):
+            self.send_command(f"LIST:STEP:VOLT {idx},{v}", check_esr=False)
+            self.send_command(f"LIST:STEP:FREQ {idx},{f}", check_esr=False)
+            self.send_command(f"LIST:STEP:DWEL {idx},{d}", check_esr=False)
+
+        # 设置重复次数
+        self.send_command(f"LIST:REP {cycles}", check_esr=False)
 
     def run_list(self, progress_callback=None):
         """
-        启动已编程的列表序列。
+        启动已编程的 LIST 序列。
 
         Args:
             progress_callback: callback(step_index, total_steps, cycle, total_cycles)
         """
         self._stop_flag = False
-        self.send_command("SOUR:TRIG:SOUR IMM")
+
+        # 启用 LIST 模式并开启输出
+        self.send_command("LIST:STAT ENAB", check_esr=False)
         self.output_on()
 
-        # 轮询回调进度（注：IT7300 列表模式由硬件控制时序）
+        # 轮询进度（注：IT7300 LIST 由硬件控制时序，软件轮询仅供参考）
         if progress_callback:
             try:
-                total_steps = int(self.query("LIST:POIN?").strip())
-                cycles_val  = int(self.query("LIST:COUN?").strip())
+                total_steps = int(self.query("LIST:STEP:COUN?").strip())
+                cycles_val  = int(self.query("LIST:REP?").strip())
                 for cycle in range(1, cycles_val + 1):
-                    for step_idx in range(1, total_steps + 1):
+                    for step_idx in range(total_steps):
                         if self._stop_flag:
                             break
                         progress_callback(step_idx, total_steps, cycle, cycles_val)
@@ -230,13 +249,11 @@ class IT7321(BaseACSource):
                 pass
 
     def stop(self):
-        """
-        停止当前正在执行的列表序列或反复开关机操作。
-        """
+        """停止 LIST 序列并关闭输出。"""
         self._stop_flag = True
         try:
+            self.send_command("LIST:STAT DIS", check_esr=False)
             self.output_off()
-            self.send_command("SOUR:FUNC:MODE FIXED")
         except Exception:
             pass
 
@@ -244,30 +261,26 @@ class IT7321(BaseACSource):
         """
         输入跳变测试（电压阶跃 / 暂态切换）。
 
-        IT7300 实现：使用 LIST 模式实现跳变序列。
-        steps 格式 (start_v, end_v, duration_s) 展开为两个列表点：
-          - (start_v, duration_s)：维持在起始电压
-          - (end_v,   duration_s)：跳变至目标电压后再维持
-        这意味着一次完整的跳变占 2 个列表点。
+        IT7300 实现：使用 LIST 模式。
+        steps 格式 (start_v, end_v, duration_s) 展开为两个 LIST 点：
+          - (start_v, duration_s)
+          - (end_v,   duration_s)
 
         Args:
             steps:  跳变序列，每项 (起始电压, 目标电压, 持续时间秒)
                     示例: [(220, 180, 1.0), (180, 220, 1.0)]
-                    → 等效于：220V维持1s → 跳变到180V维持1s → 跳变回220V维持1s
             cycles: 重复次数（默认 1 次）
-            progress_callback: callback(step_index, total_steps, cycle, total_cycles)
+            progress_callback: callback(step, total_steps, cycle, total_cycles)
         """
         if not steps:
             return
 
-        # 将 (start_v, end_v, duration_s) 展开为 IT7300 LIST 格式 (voltage, freq, dwell)
         list_steps = []
         for start_v, end_v, duration_s in steps:
-            list_steps.append((start_v, duration_s))
-            list_steps.append((end_v,   duration_s))
+            list_steps.append((start_v, 50.0, duration_s))
+            list_steps.append((end_v,   50.0, duration_s))
 
-        prog_steps = [(v, 50.0, d) for v, d in list_steps]
-        self.program_list(prog_steps, cycles=cycles)
+        self.program_list(list_steps, cycles=cycles)
         self.run_list(progress_callback=progress_callback)
 
     def repeated_on_off(self, volts: float, hz: float,
@@ -306,45 +319,51 @@ class IT7321(BaseACSource):
                 time.sleep(off_time_s)
 
     # ================================================================
-    #  5. 保护功能
+    #  5. 保护功能（IT7321 支持）
     # ================================================================
 
     def set_overvoltage_protection(self, volts: float, enabled: bool = True):
         """
         设置过压保护 (OVP) 阈值。
 
+        IT7321 不支持独立 OVP 命令，使用电压上限 CONF:VOLT:MAX 作为限值。
+
         Args:
             volts:   OVP 阈值 (V)
             enabled: True = 开启，False = 关闭
         """
-        self.send_command(f"OUTP:PROT:VOLT {volts}")
-        self.send_command("OUTP:PROT:VOLT:STAT ON" if enabled else "OUTP:PROT:VOLT:STAT OFF")
+        self.send_command(f"CONF:VOLT:MAX {volts}", check_esr=False)
 
     def set_overcurrent_protection(self, amps: float, enabled: bool = True):
         """
-        设置过流保护 (OCP) 阈值。
+        设置过流保护 (OCP) 阈值（RMS 有效值）。
+
+        IT7300 命令：CONF:PROT:CURR:RMS
 
         Args:
             amps:    OCP 阈值 (A)
-            enabled: True = 开启，False = 关闭
+            enabled: True = 开启（IMMediate 模式），False = 关闭
         """
-        self.send_command(f"OUTP:PROT:CURR {amps}")
-        self.send_command("OUTP:PROT:CURR:STAT ON" if enabled else "OUTP:PROT:CURR:STAT OFF")
+        self.send_command(f"CONF:PROT:CURR:RMS {amps}", check_esr=False)
+        if enabled:
+            self.send_command("CONF:PROT:CURR:RMS:MODE IMMEDIATE", check_esr=False)
+        else:
+            self.send_command("CONF:PROT:CURR:RMS:MODE DELAY", check_esr=False)
 
     def set_overpower_protection(self, watts: float, enabled: bool = True):
         """
-        设置过功率保护 (OPP) 阈值。
+        设置过功率保护 (OPP)。
 
-        Args:
-            watts:   OPP 阈值 (W)
-            enabled: True = 开启，False = 关闭
+        IT7321 不支持独立 OPP 命令，此方法仅记录配置，不执行实际操作。
         """
-        self.send_command(f"OUTP:PROT:POW {watts}")
-        self.send_command("OUTP:PROT:POW:STAT ON" if enabled else "OUTP:PROT:POW:STAT OFF")
+        pass
 
     def get_protection_status(self) -> dict:
         """
         查询当前保护状态。
+
+        IT7300 保护状态寄存器 STATus:QUEStionable:CONDition?：
+          bit0=OCP RMS, bit1=OCP PEAK, bit2=OVP, bit3=OPP, bit4=OTP, bit5=foldback
 
         Returns:
             dict: {
@@ -357,13 +376,13 @@ class IT7321(BaseACSource):
         if not self._connected:
             return {"ovp": False, "ocp": False, "opp": False, "trip": False}
         try:
-            resp = self.query("OUTP:PROT:STAT?")
+            resp = self.query("STAT:QUES:COND?")
             val = int(resp.strip())
             return {
-                "ovp":  bool(val & 0b0001),
-                "ocp":  bool(val & 0b0010),
-                "opp":  bool(val & 0b0100),
-                "trip": bool(val & 0b1000),
+                "ovp":  bool(val & 0b00100),   # bit2
+                "ocp":  bool(val & 0b00011),   # bit0=RMS, bit1=PEAK
+                "opp":  bool(val & 0b01000),   # bit3
+                "trip": bool(val & 0b11111),   # 任意保护触发
             }
         except Exception:
             return {"ovp": False, "ocp": False, "opp": False, "trip": False}
@@ -371,17 +390,21 @@ class IT7321(BaseACSource):
     def set_max_voltage_limit(self, volts: float):
         """
         设置最大输出电压限制 (V)。
-        IT7300 系列命令：SOUR:VOLT:LIM <value>
+
+        IT7300 命令：CONF:VOLTage:MAXimum
         """
-        self.send_command(f"SOUR:VOLT:LIM {volts}")
+        self.send_command(f"CONF:VOLT:MAX {volts}", check_esr=False)
 
     def set_max_current_limit(self, amps: float):
         """
         设置最大输出电流限制 (A)。
-        IT7300 系列命令：SOUR:CURR:LIM <value>
+
+        IT7321 不支持独立电流限值命令，使用过流保护 CONF:PROT:CURR:RMS 代替。
         """
-        self.send_command(f"SOUR:CURR:LIM {amps}")
+        self.send_command(f"CONF:PROT:CURR:RMS {amps}", check_esr=False)
 
     def clear_protection_alarm(self):
-        """清除保护告警，恢复正常运行状态"""
-        self.send_command("OUTP:PROT:CLE")
+        """清除保护告警，恢复正常运行状态。"""
+        self.send_command("*CLS", check_esr=False)
+        time.sleep(0.1)
+        self.send_command("PROTection:CLEar", check_esr=False)

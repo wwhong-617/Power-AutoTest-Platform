@@ -501,7 +501,7 @@ class InputEfficiencyTest(TestCase):
                 while self.is_pause_requested() and not self.is_stop_requested():
                     time.sleep(0.2)
                 try:
-                    p = abs(pm.measure_power(channel=pwr_in_ch))
+                    p = abs(pm.measure_input_power())
                     pin_samples.append(p)
                 except Exception:
                     pass
@@ -531,8 +531,8 @@ class InputEfficiencyTest(TestCase):
             # 读取输出电压和电流（支持暂停/停止）
             if not self.is_stop_requested():
                 try:
-                    vout = abs(pm.measure_voltage(channel=pwr_out_ch))
-                    iout = abs(pm.measure_current(channel=pwr_out_ch))
+                    vout = abs(pm.measure_output_voltage())
+                    iout = abs(pm.measure_output_current())
                     logger.info(f"[EfficiencyTest] 负载点 {load_ratio*100:.0f}% | Vout={vout:.3f}V Iout={iout:.3f}A [CH2 输出端]")
                 except Exception as e:
                     logger.warning(f"[EfficiencyTest] Vout/Iout 读取失败: {e}")

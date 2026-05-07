@@ -91,7 +91,7 @@ class StandbyPowerTest(TestCase):
 
         pin = 0.0
         if self.pm:
-            pin = self.pm.measure_power()  # WT333E，默认 channel=0
+            pin = self.pm.measure_input_power()
 
         self.measurements["standby_power_w"] = round(pin, 4)
 

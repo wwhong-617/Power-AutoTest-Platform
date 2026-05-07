@@ -296,7 +296,7 @@ class OutputOcpProtectTest(TestCase):
         if pm is None:
             return float(vout_target)
         try:
-            return abs(pm.measure_voltage(channel="CH2"))
+            return abs(pm.measure_output_voltage())
         except Exception:
             return float(vout_target)
 

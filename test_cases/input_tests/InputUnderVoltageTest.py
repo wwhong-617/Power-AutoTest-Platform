@@ -334,7 +334,7 @@ class InputUnderVoltageTest(TestCase):
             time.sleep(self.settle_time)
 
             try:
-                vout_now = pwr.measure_voltage(self.pwr_out_v_ch) if pwr else None
+                vout_now = pwr.measure_output_voltage() if pwr else None
             except Exception:
                 vout_now = None
 
@@ -368,7 +368,7 @@ class InputUnderVoltageTest(TestCase):
             time.sleep(1.0)
 
             try:
-                vout_now = pwr.measure_voltage(self.pwr_out_v_ch) if pwr else None
+                vout_now = pwr.measure_output_voltage() if pwr else None
             except Exception:
                 vout_now = None
 
@@ -402,7 +402,7 @@ class InputUnderVoltageTest(TestCase):
             time.sleep(1.0)
 
             try:
-                vout_now = pwr.measure_voltage(self.pwr_out_v_ch) if pwr else None
+                vout_now = pwr.measure_output_voltage() if pwr else None
             except Exception:
                 vout_now = None
 
@@ -436,7 +436,7 @@ class InputUnderVoltageTest(TestCase):
             time.sleep(self.settle_time)
 
             try:
-                vout_now = pwr.measure_voltage(self.pwr_out_v_ch) if pwr else None
+                vout_now = pwr.measure_output_voltage() if pwr else None
             except Exception:
                 vout_now = None
 

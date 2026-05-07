@@ -80,17 +80,10 @@ class TestCase:
 
     def setup(self, instruments: Dict[str, Any]):
         """
-        用例初始化（通用仪器初始化，子类可覆盖）。
+        用例初始化（通用参数注入，子类可覆盖）。
+        注意：仪器初始化（initialize）统一在 test_engine.run_all() 开始时一次性执行，
+        不在 per-case setup 中重复调用，以避免 *RST 不断复位已配置的仪器状态。
         """
-        for key, inst in instruments.items():
-            if inst and getattr(inst, "_connected", False):
-                if not hasattr(inst, "initialize"):
-                    continue
-                try:
-                    inst.initialize()
-                except Exception:
-                    pass
-
         # ---- 将 engine 注入的 specs_v2 合并到 self.spec（供各测试用例读取）----
         specs_injected = self.params.get("specs", {})
         for k, v in specs_injected.items():
@@ -483,8 +476,8 @@ class TestCase:
             osc.add_measurement(ch_out, "VMAX")
             osc.add_measurement(ch_out, "VMIN")
             time.sleep(0.3)   # 等待测量面板刷新
-            osc_vmax = osc.measure_voltage_max(ch_out)
-            osc_vmin = osc.measure_voltage_min(ch_out)
+            osc_vmax = osc.measure_output_voltage_max()
+            osc_vmin = osc.measure_output_voltage_min()
             info(f"[{self.name}] 示波器测量 | Vmax={osc_vmax:.3f}V Vmin={osc_vmin:.3f}V")
         except Exception as e:
             warning(f"[{self.name}] 示波器测量失败: {e}")
@@ -611,9 +604,11 @@ class TestCase:
 
             if pwrmeter and getattr(pwrmeter, "_connected", False):
                 try:
-                    pwr_ch_str = self.params.get("pwr_out_v_ch", "CH1")
-                    time.sleep(2)
-                    measured_vout = pwrmeter.measure_voltage(channel=pwr_ch_str)
+                    # 清除 ETS 瞬态抑制模式，防止峰值锁定导致读数异常
+                    if hasattr(pwrmeter, 'clear_ets'):
+                        pwrmeter.clear_ets()
+                    time.sleep(1)
+                    measured_vout = pwrmeter.measure_output_voltage()
                 except Exception as e:
                     logger.warning(f"[StartupCheck] 功率计读取失败: {e}")
 
