@@ -8,14 +8,141 @@ Configuration I/O — 配置文件序列化与反序列化
 import json
 import math
 import os
+from typing import List
 import tkinter as tk
 
 from config_schema import (
+    DEVICE_DEFS,
     SPECS_KEYS, DYN_ROW_FIELDS,
     _to_float, _safe_float,
     rows_to_dicts,
     build_specs_flat, build_protection_flat,
 )
+
+
+def _to_float(val):
+    """
+    将字符串转为 float，失败返回 None（区别于 _safe_float 的 0.0）。
+    """
+    if val is None or str(val).strip() == "":
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def validate_config(app) -> List[str]:
+    """
+    保存前校验 UI 配置，返回错误信息列表。
+    空列表 = 校验通过。
+    """
+    errors = []
+
+    # ---- 输入电压范围：lo < hi ----
+    lo = _to_float(app._input_voltage_lo_var.get())
+    hi = _to_float(app._input_voltage_hi_var.get())
+    if lo is not None and hi is not None and lo >= hi:
+        errors.append("输入电压范围：最小值必须小于最大值")
+    elif lo is None and app._input_voltage_lo_var.get().strip() != "":
+        errors.append("输入电压范围-最小值：无效数值")
+    elif hi is None and app._input_voltage_hi_var.get().strip() != "":
+        errors.append("输入电压范围-最大值：无效数值")
+
+    # ---- 输出电压范围：min < max ----
+    vmin = _to_float(app._output_voltage_min_var.get())
+    vmax = _to_float(app._output_voltage_max_var.get())
+    if vmin is not None and vmax is not None and vmin >= vmax:
+        errors.append("输出电压范围：最小值必须小于最大值")
+    elif vmin is None and app._output_voltage_min_var.get().strip() != "":
+        errors.append("输出电压范围-最小值：无效数值")
+    elif vmax is None and app._output_voltage_max_var.get().strip() != "":
+        errors.append("输出电压范围-最大值：无效数值")
+
+    # ---- 产品规格要求 ----
+    validate_specs(app, errors)
+
+    return errors
+
+
+def validate_specs(app, errors: list):
+    """
+    校验产品规格要求中的 lo/hi 数值。
+    - 百分比项(lo/hi在0~100之间)
+    - 非负项(lo/hi ≥ 0)
+    - lo < hi(两者均填写时)
+    """
+    PCT_LABELS = {
+        "开关机过冲（%）",
+    }
+    PCT_NEG_LABELS = {
+        "电压精度（%）",
+        "大动态负载范围（%）",
+        "小动态负载范围（%）",
+    }
+    OCP_PCT_LABELS = {
+        "输出过流点（%）",
+    }
+
+    for label_text, var_dict in app._spec_vars.items():
+        lo_var = var_dict.get("lo")
+        hi_var = var_dict.get("hi")
+        if lo_var is None or hi_var is None:
+            continue
+
+        lo_raw = lo_var.get().strip()
+        hi_raw = hi_var.get().strip()
+        lo = _to_float(lo_raw)
+        hi = _to_float(hi_raw)
+
+        # 两者都为空 → 跳过
+        if lo is None and hi is None:
+            continue
+
+        is_pct = label_text in PCT_LABELS
+        is_pct_neg = label_text in PCT_NEG_LABELS
+        is_ocp_pct = label_text in OCP_PCT_LABELS
+
+        # lo 非空但无效
+        if lo is None and lo_raw != "":
+            errors.append(f"规格要求「{label_text}」下限：无效数值")
+            lo = None  # 避免下面 lo >= hi 误报
+
+        # hi 非空但无效
+        if hi is None and hi_raw != "":
+            errors.append(f"规格要求「{label_text}」上限：无效数值")
+            hi = None
+
+        # 百分比范围校验（0~100）
+        if is_pct:
+            if lo is not None and (lo < 0 or lo > 100):
+                errors.append(f"规格要求「{label_text}」下限：有效范围0~100")
+            if hi is not None and (hi < 0 or hi > 100):
+                errors.append(f"规格要求「{label_text}」上限：有效范围0~100")
+
+        # 百分比范围校验（-100~100）
+        if is_pct_neg:
+            if lo is not None and (lo < -100 or lo > 100):
+                errors.append(f"规格要求「{label_text}」下限：有效范围-100~100")
+            if hi is not None and (hi < -100 or hi > 100):
+                errors.append(f"规格要求「{label_text}」上限：有效范围-100~100")
+
+        # 输出过流点（100~200）
+        elif is_ocp_pct:
+            if lo is not None and (lo < 100 or lo > 200):
+                errors.append(f"规格要求「{label_text}」下限：有效范围100~200")
+            if hi is not None and (hi < 100 or hi > 200):
+                errors.append(f"规格要求「{label_text}」上限：有效范围100~200")
+        else:
+            # 非负校验
+            if lo is not None and lo < 0:
+                errors.append(f"规格要求「{label_text}」下限：不能为负数")
+            if hi is not None and hi < 0:
+                errors.append(f"规格要求「{label_text}」上限：不能为负数")
+
+        # lo < hi 校验（两者都有效才校验）
+        if lo is not None and hi is not None and lo >= hi:
+            errors.append(f"规格要求「{label_text}」：上限必须大于下限")
 
 
 def save_config(app, path: str):
@@ -29,7 +156,8 @@ def save_config(app, path: str):
         "product_type":          app._prod_type_vars.get("充电器") and "充电器" or "适配器",
         "input_voltage_lo":      _safe_float(app._input_voltage_lo_var.get()),
         "input_voltage_hi":      _safe_float(app._input_voltage_hi_var.get()),
-        "output_voltage":        _safe_float(app._output_voltage_var.get()),
+        "output_voltage_min":   _safe_float(app._output_voltage_min_var.get()),
+        "output_voltage_max":   _safe_float(app._output_voltage_max_var.get()),
         "output_power":          _safe_float(app._output_power_var.get()),
         "power_segment":         bool(app._power_segment_var.get()),
         "hv_power":              _safe_float(app._hv_power_var.get()),
@@ -103,7 +231,7 @@ def save_config(app, path: str):
                 "addr": app._addr_vars[k].get(),
                 "model": app._model_vars[k].get(),
             }
-            for k in app.DEVICE_DEFS
+            for k in DEVICE_DEFS
         },
         "product_info": prod_info,
         "test_params": test_params,
@@ -134,7 +262,7 @@ def load_config(app, path: str):
 
     # 设备信息
     devs = cfg.get("devices", {})
-    for k in app.DEVICE_DEFS:
+    for k in DEVICE_DEFS:
         d = devs.get(k, {})
         app._comm_vars[k].set(d.get("comm", ""))
         app._addr_vars[k].set(d.get("addr", ""))
@@ -145,12 +273,16 @@ def load_config(app, path: str):
     app._prod_name_var.set(pi.get("product_name", ""))
     app._input_voltage_lo_var.set(pi.get("input_voltage_lo", ""))
     app._input_voltage_hi_var.set(pi.get("input_voltage_hi", ""))
-    app._output_voltage_var.set(pi.get("output_voltage", ""))
+    # 输出电压：双字段，兼容旧配置只有单一 output_voltage
+    app._output_voltage_min_var.set(pi.get("output_voltage_min", ""))
+    app._output_voltage_max_var.set(
+        pi.get("output_voltage_max", "") or pi.get("output_voltage", "")
+    )
     app._output_power_var.set(pi.get("output_power", ""))
     app._power_segment_var.set(pi.get("power_segment", 0))
     app._hv_power_var.set(pi.get("hv_power", ""))
     app._lv_power_var.set(pi.get("lv_power", ""))
-    from ui.pages._product_page import on_power_segment_toggle as _opst
+    from ui.pages._product_page import on_power_segment_toggle
     on_power_segment_toggle(app)   # 根据勾选状态刷新HV/LV读写框状态
 
     pt = pi.get("product_types", {})
@@ -246,16 +378,20 @@ def load_config(app, path: str):
     app._source_conditions = []
     for row in tc_rows:
         try:
-            vin  = _to_float(row.get("vin"), 0)
-            freq = _to_float(row.get("freq"), 60.0)
-            proto = str(row.get("proto", "—")) or "—"
-            vout = _to_float(row.get("vout"), None)
-            iout = _to_float(row.get("iout"), None)
+            # JSON 数据已是 float，直接转换
+            vin  = float(row.get("vin", 0))
+            freq = float(row.get("freq", 60))
+            proto = str(row.get("proto", "") or "")
+            vout_raw = row.get("vout")
+            vout = float(vout_raw) if vout_raw is not None else None
+            iout_raw = row.get("iout")
+            iout = float(iout_raw) if iout_raw is not None else None
             raw_pt = str(row.get("product_type", "charger")) or "charger"
             ptype = "charger" if raw_pt in ("充电器", "charger") else "adapter"
             app._source_conditions.append((vin, freq, proto, vout, iout, ptype))
         except (ValueError, TypeError, IndexError):
             pass
+
 
     # 重新计算筛选条件并刷新树显示
     app._apply_filtered_conditions(refresh_all=True, update_tree=True)

@@ -31,7 +31,9 @@ PRODUCT_INFO_FIELDS = {
     "product_type":          str,   # "charger" | "adapter"
     "input_voltage_lo":      float,
     "input_voltage_hi":      float,
-    "output_voltage":        float,
+    "output_voltage":        float,     # 兼容旧配置（标称/最大）
+    "output_voltage_min":   float,
+    "output_voltage_max":   float,
     "output_power":          float,
     # 功率分段
     "power_segment":         bool,
@@ -57,6 +59,8 @@ SPECS_KEYS = [
     ("大动态负载范围_pct",   "大动态负载范围（%）"),
     ("小动态负载范围_pct",   "小动态负载范围（%）"),
     ("开关机过冲_pct",       "开关机过冲（%）"),
+    ("上升时间_ms",         "上升时间（ms）"),
+    ("开机延迟时间_ms",       "开机延迟时间（ms）"),
     ("空载功耗_W",          "空载功耗（W）"),
     ("待机功耗_W",          "待机功耗（W）"),
     ("Brown_in_V",          "Brown-in（V）"),
@@ -263,3 +267,85 @@ def build_protection_flat(prot_vars, prot_raw):
             else:
                 out[flat_key] = ""
     return out
+
+
+# ====================== 设备定义（供UI使用） ======================
+DEVICE_DEFS = {
+    "ac_source": {
+        "label": "交流源 (AC Source)",
+        "comm_options": ["USB", "LAN"],
+        "model_options": ["IT7321", "IT7322"],
+    },
+    "electronic_load": {
+        "label": "电子负载 (Electronic Load)",
+        "comm_options": ["COM"],
+        "model_options": ["IT8511", "IT8512", "IT8701P"],
+    },
+    "oscilloscope": {
+        "label": "示波器 (Oscilloscope)",
+        "comm_options": ["USB"],
+        "model_options": ["DSOX4024A"],
+    },
+    "power_meter": {
+        "label": "功率计 (Power Meter)",
+        "comm_options": ["USB"],
+        "model_options": ["WT333E", "WT322E"],
+    },
+    "sniffer": {
+        "label": "协议诱骗器 (Sniffer)",
+        "comm_options": ["COM"],
+        "model_options": ["IP2716Sniffer"],
+    },
+    "dc_source": {
+        "label": "直流源 (DC Source)",
+        "comm_options": ["USB"],
+        "model_options": ["IT6333A"],
+    },
+}
+
+
+# =============================================================================
+# 测试用例注册表（唯一数据源）
+# =============================================================================
+# 用例英文名 → {module, cn_name, filter_mode}
+#
+# filter_mode 可选值：
+#   "passthrough"     - 全量转 dict（默认，不做任何过滤）
+#   "min_vin"         - 取每 (proto,vout,iout) 分组内 Vin 最低的那条
+#   "min_vout"        - 取 vout 最低的那条，多条件 vout 与之一致
+#   "voltage_segment" - 按 (proto,vout,iout) 分组，每组取 Vin 最高
+#
+# 旧字段 "voltage_segment" 已废弃，统一迁移为 filter_mode：
+#   voltage_segment=True  → filter_mode="voltage_segment"
+#   voltage_segment=False → filter_mode="passthrough"（或不写，默认 passthrough）
+CASE_REGISTRY = {
+    # input_tests
+    "InputVoltageRangeTest":    {"module": "test_cases.input_tests.InputVoltageRangeTest",    "cn_name": "输入电压范围测试",        "filter_mode": "voltage_segment"},
+    "InputUnderVoltageTest":   {"module": "test_cases.input_tests.InputUnderVoltageTest",   "cn_name": "输入欠压测试",           "filter_mode": "min_vin"},
+    "InputDipTest":            {"module": "test_cases.input_tests.InputDipTest",            "cn_name": "输入跌落测试",           "filter_mode": "voltage_segment"},
+    "InputNoLoadPowerTest":    {"module": "test_cases.input_tests.InputNoLoadPowerTest",    "cn_name": "输入空载功率测试",       "filter_mode": "passthrough"},
+    "InputEfficiencyTest":     {"module": "test_cases.input_tests.InputEfficiencyTest",     "cn_name": "输入效率测试",           "filter_mode": "passthrough"},
+    # output_tests
+    "OutputPowerOnOffTest":     {"module": "test_cases.output_tests.OutputPowerOnOffTest",     "cn_name": "输出开关机测试",         "filter_mode": "passthrough"},
+    "OutputRiseTimeTest":       {"module": "test_cases.output_tests.OutputRiseTimeTest",       "cn_name": "输出电压上升时间测试",   "filter_mode": "min_vout"},
+    "OutputStartupDelayTest":   {"module": "test_cases.output_tests.OutputStartupDelayTest",   "cn_name": "输出开机延迟时间测试",   "filter_mode": "min_vout"},
+    "OutputRippleNoiseTest":    {"module": "test_cases.output_tests.OutputRippleNoiseTest",    "cn_name": "输出纹波噪声测试",       "filter_mode": "passthrough"},
+    "OutputRippleLoadScanTest": {"module": "test_cases.output_tests.OutputRippleLoadScanTest", "cn_name": "输出纹波负载扫描测试",   "filter_mode": "passthrough"},
+    "OutputRippleInputScanTest":{"module": "test_cases.output_tests.OutputRippleInputScanTest","cn_name": "输出纹波输入扫描测试",  "filter_mode": "voltage_segment"},
+    "OutputDynamicTest":        {"module": "test_cases.output_tests.OutputDynamicTest",        "cn_name": "输出动态测试",           "filter_mode": "passthrough"},
+    # protection_tests
+    "OutputOcpProtectTest":     {"module": "test_cases.protection_tests.OutputOcpProtectTest",    "cn_name": "输出过流保护测试",       "filter_mode": "passthrough"},
+    "OutputScpProtectTest":     {"module": "test_cases.protection_tests.OutputScpProtectTest",    "cn_name": "输出短路保护测试",       "filter_mode": "passthrough"},
+    # protocol_tests
+    "PDProtocolTest":           {"module": "test_cases.protocol_tests.PDProtocolTest",          "cn_name": "PD协议",                "filter_mode": "passthrough"},
+    "QCProtocolTest":           {"module": "test_cases.protocol_tests.QCProtocolTest",          "cn_name": "QC协议",                "filter_mode": "passthrough"},
+    "AFCProtocolTest":          {"module": "test_cases.protocol_tests.AFCProtocolTest",         "cn_name": "AFC协议",               "filter_mode": "passthrough"},
+    "FCPProtocolTest":          {"module": "test_cases.protocol_tests.FCPProtocolTest",          "cn_name": "FCP协议",               "filter_mode": "passthrough"},
+}
+
+# 用例英文名 → 中文名
+CASE_CN_NAMES = {k: v["cn_name"] for k, v in CASE_REGISTRY.items()}
+
+# 用例英文名 → 模块路径
+CASE_MODULE_MAP = {k: v["module"] for k, v in CASE_REGISTRY.items()}
+

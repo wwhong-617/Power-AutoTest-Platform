@@ -31,6 +31,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 
 from logger_config import logger, info, warning, error
+from instruments.base import InstrumentConnectionState
 
 # =====================================================================
 # 动态仪器驱动映射
@@ -97,6 +98,18 @@ class InstrumentManager:
         self._config: Dict[str, Any] = {}           # 原始配置副本
         self._connection_results: Dict[str, bool] = {}  # key -> connected?
         self._simulation_mode = False
+        self._connection_callback = None  # (key, state, detail) -> None
+
+    def set_connection_callback(self, callback):
+        """
+        设置连接进度回调。
+
+        callback 签名：
+            callback(key: str, state: InstrumentConnectionState, detail: str)
+
+        在连接过程中会被多次调用，上报每台仪器每一步的状态。
+        """
+        self._connection_callback = callback
 
     def load_from_config(self, config: Dict[str, Any]):
         """
@@ -256,14 +269,21 @@ class InstrumentManager:
         Returns:
             dict: {instrument_key: connected_bool}
         """
-        info(f"[InstrumentManager] 开始连接仪器（共 {len(self._instruments)} 台）")
+        total = len(self._instruments)
+        info(f"[InstrumentManager] 开始连接仪器（共 {total} 台）")
         self._connection_results = {}
 
-        for key, inst in self._instruments.items():
+        for idx, (key, inst) in enumerate(self._instruments.items(), 1):
+            # ── 注册状态回调 ───────────────────────────────
+            inst.set_state_callback(
+                lambda k, s, d, _key=key: self._on_instrument_state(_key, s, d)
+            )
+
             try:
                 if self._simulation_mode:
                     self._connection_results[key] = True
-                    info(f"[InstrumentManager] {key} [模拟模式]")
+                    self._on_instrument_state(key, InstrumentConnectionState.CONNECTED,
+                                             f"{key} [模拟模式]")
                 else:
                     ok = self.connect_with_retry(key, retries=retries, delay_ms=delay_ms)
                     self._connection_results[key] = ok
@@ -275,17 +295,39 @@ class InstrumentManager:
             except Exception as e:
                 error(f"[InstrumentManager] {key} 连接异常: {e}")
                 self._connection_results[key] = False
+                self._on_instrument_state(key, InstrumentConnectionState.FAILED, f"{e}")
 
             # 每个仪器之间稍作间隔，避免 USB 枚举冲突
             time.sleep(0.3)
 
         return self._connection_results
 
+    def _on_instrument_state(self, key: str, state: InstrumentConnectionState, detail: str):
+        """
+        仪器状态回调——将仪器层的 InstrumentConnectionState 转换为 logger + UI callback。
+        """
+        # 写 logger
+        state_label = state.value
+        if state == InstrumentConnectionState.CONNECTED:
+            info(f"[InstrumentManager] {key}: {state_label} - {detail}")
+        elif state == InstrumentConnectionState.FAILED:
+            warning(f"[InstrumentManager] {key}: {state_label} - {detail}")
+        else:
+            info(f"[InstrumentManager] {key}: {state_label} - {detail}")
+
+        # 推 UI callback
+        if self._connection_callback:
+            try:
+                self._connection_callback(key, state, detail)
+            except Exception:
+                pass
+
     def connect_with_retry(self, key: str, retries: int = 3,
                            delay_ms: int = 2000) -> bool:
         """
         对指定仪器带重试的连接。
         指数退避：1s → 2s → 4s
+        每一步状态都会通过 inst.connect(state_callback) 实时上报。
         """
         for attempt in range(1, retries + 1):
             inst = self._instruments.get(key)
@@ -296,21 +338,30 @@ class InstrumentManager:
             if self._simulation_mode:
                 return True
 
+            # 状态上报：开始第 N 次尝试
+            detail = f"第 {attempt}/{retries} 次尝试"
+            self._on_instrument_state(key, InstrumentConnectionState.RETRYING
+                                     if attempt > 1 else InstrumentConnectionState.OPENING,
+                                     detail)
+
             try:
-                ok = inst.connect()
+                ok = inst.connect()  # 内部通过 state_callback 实时上报各步骤
                 if ok:
-                    info(f"[InstrumentManager] {key} 重试第 {attempt} 次成功")
+                    # 连接成功（终态由 inst.connect() 内部上报，这里只打日志）
                     return True
                 else:
-                    warning(f"[InstrumentManager] {key} 重试第 {attempt} 次返回 False")
+                    warning(f"[InstrumentManager] {key} 第 {attempt} 次返回 False")
             except Exception as e:
-                error(f"[InstrumentManager] {key} 重试第 {attempt} 次异常: {e}")
+                error(f"[InstrumentManager] {key} 第 {attempt} 次异常: {e}")
 
             if attempt < retries:
                 wait_s = delay_ms * attempt / 1000.0
-                info(f"[InstrumentManager] {key} 等待 {wait_s:.1f}s 后重试...")
+                self._on_instrument_state(key, InstrumentConnectionState.RETRYING,
+                                         f"等待 {wait_s:.1f}s 后重试...")
                 time.sleep(wait_s)
 
+        self._on_instrument_state(key, InstrumentConnectionState.FAILED,
+                                  "多次重试后仍失败")
         error(f"[InstrumentManager] {key} 多次重试后仍失败")
         return False
 

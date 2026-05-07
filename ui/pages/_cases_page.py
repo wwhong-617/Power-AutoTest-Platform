@@ -20,6 +20,7 @@
   _filter_conditions_by_case, _apply_filtered_conditions
 """
 import tkinter as tk
+from test_engine import TestEngine, CASE_CN_NAMES
 from tkinter import ttk
 
 
@@ -93,7 +94,7 @@ def _build_left_panel(app, left_panel):
 
     # ---- 用例分类初始化 ----
     app._test_case_defs = {}
-    for en_key, cn_name in app.CASE_CN_NAMES.items():
+    for en_key, cn_name in CASE_CN_NAMES.items():
         if "保护" in cn_name:
             category = "保护测试"
         elif cn_name.startswith("输入"):
@@ -109,7 +110,7 @@ def _build_left_panel(app, left_panel):
         app._test_case_defs[category].append(cn_name)
 
     app._case_cn_to_en = {}
-    for en_key, cn_name in app.CASE_CN_NAMES.items():
+    for en_key, cn_name in CASE_CN_NAMES.items():
         app._case_cn_to_en[cn_name] = en_key
         if cn_name.endswith("测试"):
             app._case_cn_to_en[cn_name[:-2]] = en_key
@@ -154,6 +155,8 @@ def _build_left_panel(app, left_panel):
             app._case_step_text.insert("end", app._get_test_case_flow(name))
             app._case_step_text.config(state="disabled")
             en_key = app._case_cn_to_en.get(name, name)
+            # 勾选对应 checkbox，触发 on_check 刷新过滤结果
+            app._case_vars[name].set(True)
             app._apply_filtered_conditions(selected_case=en_key)
 
         lbl.bind("<Button-1>", on_name_click)

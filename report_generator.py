@@ -21,7 +21,7 @@ from collections import defaultdict
 logger = logging.getLogger("PowerAutoTest.ReportGen")
 
 # 从 test_engine 导入用例注册表（唯一数据源）
-from test_engine import TestEngine
+from config_schema import CASE_REGISTRY, CASE_CN_NAMES
 
 # ============================================================
 # 映射表（统一由 TestEngine.CASE_CN_NAMES 派生）
@@ -29,11 +29,11 @@ from test_engine import TestEngine
 
 # 英文 key -> 中文显示名（只取 tuple 第0项，兼容旧版字符串）
 def _display_name(en: str) -> str:
-    v = TestEngine.CASE_CN_NAMES.get(en, en)
+    v = CASE_CN_NAMES.get(en, en)
     return v[0] if isinstance(v, tuple) else v
 
 # 英文 key -> 中文名（短名，用于内部 key）
-CASE_NAME_CN_MAP = {en: _display_name(en) for en in TestEngine.CASE_CN_NAMES}
+CASE_NAME_CN_MAP = {en: _display_name(en) for en in CASE_CN_NAMES}
 
 # 中文显示名（含"测试"后缀）-> 分类
 _CASE_CN_TO_CATEGORY = {
@@ -97,7 +97,7 @@ DEFAULT_COLS = [
 GLOBAL_COLS = [
     # === 标识（2列）===
     ("序号",               6),
-    ("用例名称",          18),
+    ("用例名称",          25),
 
     # === 工况条件（4列）===
     ("输入条件",          18),
@@ -155,6 +155,17 @@ def _mkstyle():
 
 def _rfill(result: str, s: dict):
     return {"PASS": s["pass_fill"], "FAIL": s["fail_fill"], "SKIP": s["skip_fill"]}.get(result.upper())
+
+
+def _rfont(result: str):
+    """返回测试结论单元格字体颜色：FAIL红/PASS绿/SKIP黄/NA灰，无背景填充也显示颜色。"""
+    from openpyxl.styles import Font
+    return {
+        "FAIL": Font(color="CC0000", bold=True),
+        "PASS": Font(color="008800", bold=True),
+        "SKIP": Font(color="FF8F00", bold=True),
+        "NA":   Font(color="757575"),
+    }.get(result.upper(), Font(color="757575"))
 
 
 def _fmt(v):
@@ -465,7 +476,7 @@ def _get_case_cols(case_name: str):
     （避免 numpy 版本不兼容导致的包导入失败）。
     """
     try:
-        entry = TestEngine.CASE_REGISTRY.get(case_name, {})
+        entry = CASE_REGISTRY.get(case_name, {})
         if not entry:
             raise ValueError(f"{case_name} not in CASE_REGISTRY")
         mod_str = entry.get("module", "") if isinstance(entry, dict) else str(entry)
@@ -527,8 +538,7 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
     # ---- 前缀固定列：序号 + 用例名称 ----
     prefix_cols = [
         ("序号", 6),
-        ("用例名称", 14),
-        # ("测试结论", 8),
+        ("用例名称", 25),
     ]
     prefix_keys = [k for k, _ in prefix_cols]   # 2项
     all_render_cols = prefix_cols + cols         # 含前缀的完整列定义
@@ -631,6 +641,7 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
                 rf = _rfill(conclusion, s)
                 if rf:
                     c.fill = rf
+                c.font = _rfont(conclusion)
             elif col_name in ("测试波形",):
                 c.alignment = Alignment(horizontal="center", vertical="center")
             else:
@@ -904,7 +915,7 @@ def _write_waveform_sheet(ws, all_wf_entries: list, case_start_info: list,
                 try:
                     with PILImage.open(img_path) as im:
                         orig_w, orig_h = im.size
-                except:
+                except (OSError, IOError):
                     orig_w, orig_h = 800, 600
                 img = XLImage(img_path)
                 img.width  = int(orig_w * SCALE)

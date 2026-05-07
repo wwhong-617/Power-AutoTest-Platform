@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 """
 BaseInstrument - 所有仪器驱动的公共基类
 ==========================================
 
 定义统一接口：
-- connect() / disconnect()
+- connect(state_callback) / disconnect()
 - is_connected()
 - send_command() / query()
 - identity() - 获取仪器身份信息
@@ -14,6 +15,7 @@ BaseInstrument - 所有仪器驱动的公共基类
 import pyvisa
 import time
 from abc import ABC, abstractmethod
+from enum import Enum
 
 
 class InstrumentError(Exception):
@@ -21,9 +23,30 @@ class InstrumentError(Exception):
     pass
 
 
+class InstrumentConnectionState(Enum):
+    """
+    仪器连接过程中的状态枚举。
+
+    使用说明：
+      - 每台仪器连接时，InstrumentManager 通过 state_callback 逐个上报状态
+      - UI 根据状态更新进度显示
+      - CONNECTED / FAILED 是终态
+    """
+    IDLE        = "idle"         # 空闲（未开始）
+    CREATING    = "creating"     # 正在创建实例
+    OPENING     = "opening"      # 正在打开 VISA / 串口资源
+    IDENTIFYING = "identifying"  # 正在查询 *IDN?
+    INIT        = "init"         # 正在发送初始化命令
+    VALIDATING  = "validating"  # 正在验证身份
+    RETRYING    = "retrying"    # 正在重试（第 N 次）
+    CONNECTED   = "connected"   # 连接成功（终态）
+    FAILED      = "failed"      # 连接失败（终态）
+
+
 class BaseInstrument(ABC):
     """
     仪器基类，定义公共接口。
+
     每个子类必须实现：
     - _send_initial_commands() - 连接后初始化命令
     - _validate_identity() - 验证仪器身份
@@ -44,7 +67,8 @@ class BaseInstrument(ABC):
         self._timeout_ms = timeout_ms
         self._resource = None
         self._connected = False
-        self._idn = ""  # 仪器身份字符串
+        self._idn = ""
+        self._state_callback = None  # (key, state, detail) -> None
 
     # ---------------------- 公共接口 ----------------------
 
@@ -57,27 +81,60 @@ class BaseInstrument(ABC):
     def idn(self) -> str:
         """返回仪器身份字符串（*IDN*）"""
         return self._idn
-    def connect(self) -> bool:
+
+    def set_state_callback(self, callback):
+        """
+        设置状态回调函数。
+
+        callback 签名：
+            callback(key: str, state: InstrumentConnectionState, detail: str)
+
+        在连接过程中会被多次调用，上报每一步状态。
+        """
+        self._state_callback = callback
+
+    def _report(self, state: InstrumentConnectionState, detail: str = ""):
+        """内部方法：通过回调上报状态（无回调时静默）"""
+        if self._state_callback:
+            try:
+                self._state_callback(self.__class__.__name__, state, detail)
+            except Exception:
+                pass
+
+    def connect(self, state_callback=None) -> bool:
         """
         建立连接并验证仪器身份。
+
+        Args:
+            state_callback: 可选的状态回调 (key, state, detail) -> None，
+                            用于进度上报。如果传入，则忽略实例级回调。
+
         Returns:
             True=连接成功，False=失败
         """
+        # 优先使用传入的回调，其次使用实例级回调
+        if state_callback is not None:
+            self._state_callback = state_callback
+
         if self._connected:
+            self._report(InstrumentConnectionState.CONNECTED,
+                         f"已连接（重复调用）: {self._idn}")
             return True
 
         try:
-            # USB 设备使用 NI VISA 后端（支持 USBTMC），
-            # 其他类型使用 pyvisa-py 后端
+            # ── 1. 打开资源 ──────────────────────────────────
+            self._report(InstrumentConnectionState.OPENING,
+                         f"打开 {self._address}")
+
             if self._conn_type == "USB":
-                rm = pyvisa.ResourceManager()  # NI VISA 后端
+                rm = pyvisa.ResourceManager()        # NI VISA 后端
             else:
-                rm = pyvisa.ResourceManager("@py")  # pyvisa-py 后端
+                rm = pyvisa.ResourceManager("@py")   # pyvisa-py 后端
+
             self._resource = rm.open_resource(self._address)
             self._resource.timeout = self._timeout_ms
 
             # RS232 串口：配置波特率和换行符
-            # IT8511 等设备要求：波特率 19200，换行符 LF (\n)
             if self._conn_type == "RS232":
                 try:
                     self._resource.baud_rate = 9600
@@ -89,25 +146,31 @@ class BaseInstrument(ABC):
                 except Exception:
                     pass
 
-            # 读取身份信息
+            # ── 2. 查询身份 ──────────────────────────────────
+            self._report(InstrumentConnectionState.IDENTIFYING, "查询 *IDN?")
             self._idn = self._resource.query("*IDN?").strip()
-            print(f"    [{self.__class__.__name__}] Connected: {self._idn}")
 
-            # 标记为已连接，再发送初始化命令
-            self._connected = True
-
-            # 发送初始化命令（子类实现）
+            # ── 3. 发送初始化命令 ─────────────────────────────
+            self._report(InstrumentConnectionState.INIT, "发送初始化命令")
             self._send_initial_commands()
 
-            # 验证身份（子类实现）
+            # ── 4. 验证身份 ─────────────────────────────────
+            self._report(InstrumentConnectionState.VALIDATING,
+                         f"验证身份: {self._idn}")
             if not self._validate_identity():
+                self._report(InstrumentConnectionState.FAILED,
+                             f"身份不符: {self._idn}")
                 self._connected = False
-                raise InstrumentError(f"Unexpected device: {self._idn}")
+                return False
 
+            # ── 5. 完成 ────────────────────────────────────
+            self._connected = True
+            self._report(InstrumentConnectionState.CONNECTED,
+                         f"{self.__class__.__name__} @ {self._address}  [{self._idn}]")
             return True
 
         except Exception as e:
-            print(f"    [{self.__class__.__name__}] Connection failed: {e}")
+            self._report(InstrumentConnectionState.FAILED, f"{e}")
             self._connected = False
             return False
 
@@ -128,111 +191,87 @@ class BaseInstrument(ABC):
         """返回仪器身份字符串"""
         return self._idn
 
-    def send_command(self, cmd: str, check_esr: bool = True):
-        """
-        发送 SCPI 命令（无返回值）。
-
-        Args:
-            cmd:       SCPI 命令字符串
-            check_esr: 是否在写入后检查 *ESR? 确认命令执行结果。
-                       写入成功后查询 ESR，ESR bit 5(命令错误) 或 bit 4(执行错误)
-                       时记录警告（不抛异常），因为某些命令在特定仪器状态下会返回错误。
-        """
-        if not self._connected:
-            raise InstrumentError("Not connected")
-        try:
-            self._resource.write(cmd)
-            if check_esr:
-                # 写入成功后，检查 ESR 确认命令被接受
-                esr_str = self._resource.query("*ESR?").strip()
-                # 忽略查询错误(bit4)，只关注命令错误(bit5)和执行错误(bit4的另一个组合)
-                # ESR bit5=35 命令错误, bit4=34 执行错误, bit3=33 查询错误
-                try:
-                    esr_val = int(esr_str)
-                    # bit5(Command Error) 或 bit4(Execution Error) -> 警告但不停止
-                    if esr_val & 0x20 or esr_val & 0x10:
-                        import logging
-                        logging.getLogger("PowerAutoTest").warning(
-                            f"[Instrument] ESR={esr_str} after: {cmd}"
-                        )
-                except (ValueError, Exception):
-                    pass
-        except InstrumentError:
-            raise
-        except Exception as e:
-            raise InstrumentError(f"Send command failed: {cmd} -> {e}")
-
-    def query(self, cmd: str, delay_ms: int = 0) -> str:
-        """
-        发送 SCPI 查询命令并返回响应
-        Args:
-            cmd:      SCPI 命令
-            delay_ms: 读取前等待时间（毫秒）
-        """
-        if not self._connected:
-            raise InstrumentError("Not connected")
-        try:
-            if delay_ms > 0:
-                time.sleep(delay_ms / 1000)
-            return self._resource.query(cmd).strip()
-        except Exception as e:
-            raise InstrumentError(f"Query failed: {cmd} -> {e}")
-
-    def read_raw(self, size: int = None) -> bytes:
-        """
-        读取原始二进制数据（用于获取波形等二进制响应）。
-        Returns:
-            bytes: 原始二进制数据
-        """
-        if not self._connected:
-            raise InstrumentError("Not connected")
-        try:
-            if size is None:
-                return self._resource.read_raw()
-            else:
-                return self._resource.read_raw(size)
-        except Exception as e:
-            raise InstrumentError(f"read_raw failed: {e}")
-
-    def clear(self):
-        """
-        清除仪器缓冲区，执行 VISA Device Clear（USBTMC）。
-        用于清除残留协议错误，恢复正常通讯状态。
-        """
-        if self._resource is not None:
-            try:
-                self._resource.clear()
-            except Exception:
-                pass
-
     # ---------------------- 子类必须实现 ----------------------
 
     @abstractmethod
     def _send_initial_commands(self):
-        """连接后发送初始化命令（重写实现）"""
+        """连接后发送初始化命令（子类实现）"""
         pass
 
     @abstractmethod
     def _validate_identity(self) -> bool:
-        """
-        验证仪器身份是否匹配。
-        Returns:
-            True=身份正确，False=不匹配
-        """
+        """验证仪器身份是否匹配（子类实现）"""
         pass
 
-    # ---------------------- 模拟模式（开发/无仪器时使用） ----------------------
+    # ---------------------- 公共发送接口 ----------------------
+
+    def send_command(self, cmd: str, check_esr: bool = True):
+        """
+        发送 SCPI 命令。
+
+        Args:
+            cmd:       SCPI 命令字符串
+            check_esr: 是否检查状态寄存器（ESR）
+        """
+        if self._resource is None:
+            raise InstrumentError("Not connected")
+
+        try:
+            self._resource.write(cmd)
+            if check_esr:
+                esr = self._resource.query("*ESR?").strip()
+                if int(esr) & 0x7C:  # 任意错误位
+                    raise InstrumentError(f"ESR error: {esr} after '{cmd}'")
+        except InstrumentError:
+            raise
+        except Exception as e:
+            raise InstrumentError(f"Send command failed: {e}")
+
+    def query(self, cmd: str, delay_ms: int = 0) -> str:
+        """
+        发送 SCPI 查询并返回响应。
+
+        Args:
+            cmd:      SCPI 查询命令
+            delay_ms: 查询后延时（毫秒）
+        """
+        if self._resource is None:
+            raise InstrumentError("Not connected")
+
+        try:
+            response = self._resource.query(cmd)
+            if delay_ms > 0:
+                time.sleep(delay_ms / 1000)
+            return response.strip()
+        except Exception as e:
+            raise InstrumentError(f"Query failed: {e}")
+
+    def read_raw(self, size: int = None) -> bytes:
+        """读取原始字节（用于波形下载等场景）"""
+        if self._resource is None:
+            raise InstrumentError("Not connected")
+        if size is None:
+            return self._resource.read_raw()
+        return self._resource.read_raw(size)
+
+    def clear(self):
+        """清除仪器状态（*CLS）"""
+        self.send_command("*CLS", check_esr=False)
 
     def enable_simulation(self, identity: str = "SIMULATION"):
         """
-        启用模拟模式，不连接真实仪器。
-        用于开发阶段或无仪器时调试。
+        启用模拟模式（无仪器时用于开发/演示）。
+
+        启用后所有通讯操作返回模拟数据，不抛出异常。
         """
+        self._simulating = True
+        self._sim_idn = identity
         self._connected = True
-        self._idn = identity
-        self._resource = None  # 模拟模式下 resource 为 None
-        print(f"    [{self.__class__.__name__}] Simulation mode: {identity}")
 
     def _simulate_read_raw(self, size: int) -> bytes:
-        """模拟读取原始数据（供子类在模拟模式下调用）"""
+        """模拟读取（子类可覆盖）"""
         return bytes(size)
+
+    def __repr__(self):
+        status = "connected" if self._connected else "disconnected"
+        return f"<{self.__class__.__name__} {self._conn_type} {self._address} [{status}]>"

@@ -33,17 +33,18 @@
         }
     },
     "product_info": {
-        "product_name": "小胖ATE调试",
+        "product_name": "小胖ATE",
         "product_type": "充电器",
-        "input_voltage_lo": 90.0,
+        "input_voltage_lo": 100.0,
         "input_voltage_hi": 264.0,
-        "output_voltage": 0.0,
-        "output_power": 0.0,
+        "output_voltage_min": 5.0,
+        "output_voltage_max": 20.0,
+        "output_power": 67.0,
         "power_segment": true,
-        "hv_power": 60.0,
+        "hv_power": 67.0,
         "lv_power": 45.0,
         "load_startup_enabled": true,
-        "load_startup_current": 1.0,
+        "load_startup_current": 1.5,
         "load_startup_voltage": 5.0,
         "specs_v2": {
             "6级能效要求_pct_enable": 1.0,
@@ -56,6 +57,10 @@
             "小动态负载范围_pct_hi": 5.0,
             "开关机过冲_pct_lo": 0.0,
             "开关机过冲_pct_hi": 10.0,
+            "上升时间_ms_lo": 0.0,
+            "上升时间_ms_hi": 20.0,
+            "开机延迟时间_ms_lo": 0.0,
+            "开机延迟时间_ms_hi": 3000.0,
             "空载功耗_W_lo": 0.0,
             "空载功耗_W_hi": 0.5,
             "待机功耗_W_lo": 0.0,
@@ -67,7 +72,7 @@
             "输出过压点_V_lo": 21.0,
             "输出过压点_V_hi": 25.0,
             "输出欠压点_V_lo": 2.0,
-            "输出欠压点_V_hi": 4.0,
+            "输出欠压点_V_hi": 3.0,
             "输出过流点_pct_lo": 110.0,
             "输出过流点_pct_hi": 120.0,
             "纹波要求_mV_lo": 0.0,
@@ -174,9 +179,9 @@
         "eload_vout2_ch": "CH3",
         "dyn_large": [
             {
-                "up_pct": 90,
+                "up_pct": 10,
                 "up_slew": "0.2",
-                "down_pct": 10,
+                "down_pct": 90,
                 "down_slew": "0.2",
                 "freq": 50,
                 "ratio": 50
@@ -192,22 +197,22 @@
                 "ratio": 50
             }
         ],
-        "warmup": 1.0,
+        "warmup": 5.0,
         "onoff_cycle": "10-10",
         "short_cycle": "10-10"
     },
     "test_settings": {
         "osc_input_ch": "CH4",
-        "osc_input_attn": "200.0",
+        "osc_input_attn": "200",
         "osc_output_ch": "CH2",
         "osc_output_attn": "1.0",
         "osc_dynamic_ch": "CH1",
-        "osc_dynamic_attn": "10.0"
+        "osc_dynamic_attn": "10"
     },
     "test_conditions_v2": [
         {
             "product_type": "充电器",
-            "vin": 90.0,
+            "vin": 100.0,
             "freq": 60.0,
             "proto": "PD-PDO1",
             "vout": 5.0,
@@ -215,7 +220,7 @@
         },
         {
             "product_type": "充电器",
-            "vin": 90.0,
+            "vin": 100.0,
             "freq": 60.0,
             "proto": "PD-PDO2",
             "vout": 9.0,
@@ -223,7 +228,7 @@
         },
         {
             "product_type": "充电器",
-            "vin": 90.0,
+            "vin": 100.0,
             "freq": 60.0,
             "proto": "PD-PDO3",
             "vout": 12.0,
@@ -231,7 +236,7 @@
         },
         {
             "product_type": "充电器",
-            "vin": 90.0,
+            "vin": 100.0,
             "freq": 60.0,
             "proto": "PD-PDO4",
             "vout": 15.0,
@@ -239,7 +244,7 @@
         },
         {
             "product_type": "充电器",
-            "vin": 90.0,
+            "vin": 100.0,
             "freq": 60.0,
             "proto": "PD-PDO5",
             "vout": 20.0,

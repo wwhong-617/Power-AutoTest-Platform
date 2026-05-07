@@ -7,7 +7,7 @@
 
 在 app 上创建以下属性：
   _prod_type_vars, _prod_name_var, _input_voltage_lo_var, _input_voltage_hi_var
-  _output_voltage_var, _output_power_var
+  _output_voltage_min_var, _output_voltage_max_var, _output_power_var
   _power_segment_var, _hv_power_var, _lv_power_var
   _hv_power_entry, _lv_power_entry
   _load_startup_var, _load_startup_current_var, _load_startup_voltage_var
@@ -108,7 +108,8 @@ def _build_left_panel(app, left_panel):
     app._prod_name_var = tk.StringVar()
     app._input_voltage_lo_var = tk.StringVar()
     app._input_voltage_hi_var = tk.StringVar()
-    app._output_voltage_var = tk.StringVar()
+    app._output_voltage_min_var = tk.StringVar()
+    app._output_voltage_max_var = tk.StringVar()
     app._output_power_var = tk.StringVar()
     app._power_segment_var = tk.IntVar(value=0)
     app._hv_power_var = tk.StringVar()
@@ -129,21 +130,22 @@ def _build_left_panel(app, left_panel):
     # 输入电压范围
     row = ttk.Frame(box_basic)
     row.pack(anchor="w", pady=2)
-    ttk.Label(row, text="输入电压范围：", width=16, font=("Arial", 9)).pack(side="left")
+    ttk.Label(row, text="输入电压范围(V)：", width=18, font=("Arial", 9)).pack(side="left")
     ttk.Entry(row, textvariable=app._input_voltage_lo_var, width=12).pack(side="left")
     ttk.Label(row, text=" ~ ", font=("Arial", 9)).pack(side="left")
     ttk.Entry(row, textvariable=app._input_voltage_hi_var, width=12).pack(side="left")
 
-    # 输出电压规格
+    # 输出电压范围
     row = ttk.Frame(box_basic)
     row.pack(anchor="w", pady=2)
-    ttk.Label(row, text="输出电压规格：", width=16, font=("Arial", 9)).pack(side="left")
-    ttk.Entry(row, textvariable=app._output_voltage_var, width=24).pack(side="left")
-
+    ttk.Label(row, text="输出电压范围(V)：", width=18, font=("Arial", 9)).pack(side="left")
+    ttk.Entry(row, textvariable=app._output_voltage_min_var, width=10).pack(side="left")
+    ttk.Label(row, text=" ~ ", font=("Arial", 9)).pack(side="left")
+    ttk.Entry(row, textvariable=app._output_voltage_max_var, width=10).pack(side="left")
     # 输出功率规格
     row = ttk.Frame(box_basic)
     row.pack(anchor="w", pady=2)
-    ttk.Label(row, text="输出功率规格：", width=16, font=("Arial", 9)).pack(side="left")
+    ttk.Label(row, text="输出功率规格(W)：", width=18, font=("Arial", 9)).pack(side="left")
     ttk.Entry(row, textvariable=app._output_power_var, width=24).pack(side="left")
 
     # 高低压功率分段
@@ -151,7 +153,7 @@ def _build_left_panel(app, left_panel):
     row.pack(anchor="w", pady=2)
     tk.Checkbutton(row, variable=app._power_segment_var, onvalue=1, offvalue=0,
                    text="高低压功率分段", font=("Arial", 9),
-                   command=app._on_power_segment_toggle).pack(side="left")
+                   command=lambda: on_power_segment_toggle(app)).pack(side="left")
 
     # 高压段功率
     app._hv_power_row = ttk.Frame(box_basic)
@@ -191,7 +193,7 @@ def _build_left_panel(app, left_panel):
         "开关机过冲（%）", "空载功耗（W）", "待机功耗（W）",
         "Brown-in（V）", "Brown-out（V）",
         "输出过压点（V）", "输出欠压点（V）", "输出过流点（%）",
-        "纹波要求（mV）",
+        "纹波要求（mV）", "上升时间（ms）", "开机延迟时间（ms）",
     ]:
         row = ttk.Frame(box_spec)
         row.pack(anchor="w", pady=2)

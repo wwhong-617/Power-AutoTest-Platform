@@ -43,7 +43,8 @@ from typing import Dict, Any, List, Optional, Callable
 from enum import Enum
 
 from test_cases.base import TestSuite, TestCase, TestResult
-from logger_config import logger, info, warning, error
+from logger_config import info, warning, error, _log
+from config_schema import CASE_REGISTRY, CASE_CN_NAMES, CASE_MODULE_MAP
 
 # 可导入的测试用例模块前缀
 TEST_CASE_MODULE_PREFIX = "test_cases."
@@ -77,34 +78,7 @@ class TestEngine:
     #     cn_name: str，中文显示名
     # 注意：新增用例只需在此处添加一行，其他映射表自动同步
     # ============================================================
-    CASE_REGISTRY = {
-        # input_tests
-        "InputVoltageRangeTest":    {"module": "test_cases.input_tests.InputVoltageRangeTest",    "voltage_segment": True,  "cn_name": "输入电压范围测试"},
-        "InputUnderVoltageTest":   {"module": "test_cases.input_tests.InputUnderVoltageTest",   "voltage_segment": False, "cn_name": "输入欠压测试"},
-        "InputDipTest":            {"module": "test_cases.input_tests.InputDipTest",            "voltage_segment": True,  "cn_name": "输入跌落测试"},
-        "InputNoLoadPowerTest":    {"module": "test_cases.input_tests.InputNoLoadPowerTest",    "voltage_segment": False, "cn_name": "输入空载功率测试"},
-        "InputEfficiencyTest":     {"module": "test_cases.input_tests.InputEfficiencyTest",     "voltage_segment": False, "cn_name": "输入效率测试"},
-        # output_tests
-        "OutputPowerOnOffTest":    {"module": "test_cases.output_tests.OutputPowerOnOffTest",    "voltage_segment": False, "cn_name": "输出开关机测试"},
-        "OutputRippleNoiseTest":   {"module": "test_cases.output_tests.OutputRippleNoiseTest",   "voltage_segment": False, "cn_name": "输出纹波噪声测试"},
-        "OutputRippleLoadScanTest": {"module": "test_cases.output_tests.OutputRippleLoadScanTest", "voltage_segment": False, "cn_name": "输出纹波负载扫描测试"},
-        "OutputRippleInputScanTest": {"module": "test_cases.output_tests.OutputRippleInputScanTest", "voltage_segment": True,  "cn_name": "输出纹波输入扫描测试"},
-        "OutputDynamicTest":       {"module": "test_cases.output_tests.OutputDynamicTest",       "voltage_segment": False, "cn_name": "输出动态测试"},
-        # protection_tests
-        "OutputOcpProtectTest":    {"module": "test_cases.protection_tests.OutputOcpProtectTest",    "voltage_segment": False, "cn_name": "输出过流保护测试"},
-        "OutputScpProtectTest":    {"module": "test_cases.protection_tests.OutputScpProtectTest",    "voltage_segment": False, "cn_name": "输出短路保护测试"},
-        # protocol_tests
-        "PDProtocolTest":   {"module": "test_cases.protocol_tests.PDProtocolTest",   "voltage_segment": False, "cn_name": "PD协议"},
-        "QCProtocolTest":  {"module": "test_cases.protocol_tests.QCProtocolTest",  "voltage_segment": False, "cn_name": "QC协议"},
-        "AFCProtocolTest": {"module": "test_cases.protocol_tests.AFCProtocolTest", "voltage_segment": False, "cn_name": "AFC协议"},
-        "FCPProtocolTest": {"module": "test_cases.protocol_tests.FCPProtocolTest", "voltage_segment": False, "cn_name": "FCP协议"},
-    }
 
-    # 从 REGISTRY 派生：case_key -> 中文名
-    CASE_CN_NAMES = {k: v["cn_name"] for k, v in CASE_REGISTRY.items()}
-
-    # 从 REGISTRY 派生：case_key -> 模块路径字符串（兼容旧接口）
-    CASE_MODULE_MAP = {k: v["module"] for k, v in CASE_REGISTRY.items()}
 
     def __init__(self, config: Dict[str, Any], instruments: Dict[str, Any], instrument_manager=None):
         """
@@ -185,7 +159,7 @@ class TestEngine:
         if case_key in self._case_instances:
             return self._create_fresh_instance(self._case_instances[case_key])
 
-        module_path = self.CASE_MODULE_MAP.get(case_key)
+        module_path = CASE_MODULE_MAP.get(case_key)
         if not module_path:
             warning(f"[TestEngine] 未知用例: {case_key}，跳过")
             return None
@@ -214,14 +188,14 @@ class TestEngine:
         新增用例需在此添加对应的配置调用。
         """
         case_key = None
-        for k, v in self.CASE_REGISTRY.items():
+        for k, v in CASE_REGISTRY.items():
             if v["module"].rsplit(".", 1)[-1] == template.__class__.__name__:
                 case_key = k
                 break
 
         if case_key:
             try:
-                mod_path = self.CASE_MODULE_MAP[case_key]
+                mod_path = CASE_MODULE_MAP[case_key]
                 mod = importlib.import_module(mod_path)
                 cls = getattr(mod, template.__class__.__name__)
                 instance = cls()
@@ -238,16 +212,22 @@ class TestEngine:
 
     def _inject_common_params(self, case: TestCase, case_key: str = None):
         """
-        引擎只做透传：将 v2 原始配置塞入 case.params，
-        各 case 自己解析需要什么参数。
+        统一注入：所有用例的通用参数 + per-case 专用参数。
+        各 case 自己解析 params 中需要什么，不需要的字段直接忽略。
         """
-        test_settings = self.config.get("test_settings", {})
+        # ============================================================
+        # ① 参数来源：统一从 self.config 取各类原始数据
+        # ============================================================
+        test_settings  = self.config.get("test_settings", {})
         test_params   = self.config.get("test_params", {})
         product_info  = self.config.get("product_info", {})
-        # config_ui 保存的是 test_conditions_v2（per-case 字典），引擎直接按 case_key 取用
-        all_conditions = self.config.get("test_conditions_v2", {})
+        dut           = self.config.get("dut", {})
 
-        # ---- 通用参数（所有 case 都有）----
+        # ============================================================
+        # ② 示教通道参数
+        #    - 示波器输入/输出/动态通道编号及衰减
+        #    - 功率计四通道（输入电流/电压、输出电压/电流）
+        # ============================================================
         for ch_key, attn_key, param_ch, param_attn in [
             ("osc_input_ch",   "osc_input_attn",   "osc_input_ch",   "osc_input_attn"),
             ("osc_output_ch",  "osc_output_attn",  "osc_output_ch",  "osc_output_attn"),
@@ -258,59 +238,76 @@ class TestEngine:
             case.params[param_ch]   = ch.upper().replace("CH", "")
             case.params[param_attn] = attn
 
-        for k in (("pwr_in_i_ch",  "pwr_in_i_ch"),
-                  ("pwr_in_v_ch",  "pwr_in_v_ch"),
-                  ("pwr_out_v_ch", "pwr_out_v_ch"),
-                  ("pwr_out_i_ch", "pwr_out_i_ch")):
-            case.params[k[1]] = test_params.get(k[0], "CH1")
+        for json_key, param_key in [
+            ("pwr_in_i_ch",  "pwr_in_i_ch"),
+            ("pwr_in_v_ch",  "pwr_in_v_ch"),
+            ("pwr_out_v_ch", "pwr_out_v_ch"),
+            ("pwr_out_i_ch", "pwr_out_i_ch"),
+        ]:
+            case.params[param_key] = test_params.get(json_key, "CH1")
 
+        # ============================================================
+        # ③ 启动负载参数（负载预载功能）
+        # ============================================================
         case.params["load_startup_enabled"] = bool(product_info.get("load_startup_enabled", False))
-        case.params["load_startup_current"] = float(product_info.get("load_startup_current", 0.0) or 0.0)
-        case.params["load_startup_voltage"] = float(product_info.get("load_startup_voltage", 0.0) or 0.0)
+        case.params["load_startup_current"]   = float(product_info.get("load_startup_current", 0.0) or 0.0)
+        case.params["load_startup_voltage"]   = float(product_info.get("load_startup_voltage", 0.0) or 0.0)
 
-        dut = self.config.get("dut", {})
+        # ============================================================
+        # ④ DUT 参数（测试报告摘要用）
+        #    setdefault 保证已注入的值不会被覆盖
+        # ============================================================
         if dut:
             case.params.setdefault("dut_name",       dut.get("name", ""))
             case.params.setdefault("dut_model",      dut.get("model", ""))
             case.params.setdefault("input_voltage",  dut.get("output_voltage", 220))
-            case.params.setdefault("output_voltage", dut.get("output_voltage", 12.0))
+            case.params["output_voltage_max"] = float(dut.get("output_voltage_max", 12.0) or 12.0)
+            case.params["output_voltage_min"] = float(dut.get("output_voltage_min", 0.0) or 0.0)
             case.params.setdefault("output_current", dut.get("output_current", 3.0))
+            # 若用例未设置效率下限，则用 DUT 目标效率填充
             if "efficiency_min" in case.spec and not case.spec.get("efficiency_min"):
                 case.spec["efficiency_min"] = dut.get("target_efficiency", 85.0)
 
+        # ============================================================
+        # ⑤ 产品信息参数（输入范围 / 功率分段）
+        # ============================================================
         case.params.setdefault("input_voltage_lo", float(product_info.get("input_voltage_lo", 90.0)))
         case.params.setdefault("input_voltage_hi", float(product_info.get("input_voltage_hi", 264.0)))
-
         case.params["power_segment"] = int(product_info.get("power_segment", 0) or 0)
-        case.params["hv_power"] = float(product_info.get("hv_power") or 0.0)
-        case.params["lv_power"] = float(product_info.get("lv_power") or 0.0)
+        case.params["hv_power"]      = float(product_info.get("hv_power") or 0.0)
+        case.params["lv_power"]      = float(product_info.get("lv_power") or 0.0)
 
-        # ---- 动态测试参数 ----
+        # ============================================================
+        # ⑥ 动态测试参数（动态负载曲线配置）
+        # ============================================================
         case.params["dyn_large_settings"] = test_params.get("dyn_large", [])
         case.params["dyn_small_settings"] = test_params.get("dyn_small", [])
 
+        # ============================================================
+        # ⑦ 结果目录（供用例保存波形等）
+        # ============================================================
         if self._result_dir:
-            case.params["result_dir"] = self._result_dir
-            case.params["osc_waveform_dir"] = os.path.join(self._result_dir, "测试波形")
+            case.params["result_dir"]         = self._result_dir
+            case.params["osc_waveform_dir"]   = os.path.join(self._result_dir, "测试波形")
 
-        # ---- 用例专用透传（直接塞原始 v2 数据，不解析）----
+        # ============================================================
+        # ⑧ per-case 专用参数（仅当 case_key 指定时注入）
+        #    test_conditions / specs / protection_logic 等
+        #    由 _build_test_engine_config 按 case_key 预先分好，直接透传
+        # ============================================================
         if case_key is None:
             return
 
-        # 条件已由 _build_test_engine_config 按 case_key 分好，直接取用
+        all_conditions = self.config.get("test_conditions_v2", {})
         cond_list = all_conditions.get(case_key, [])
 
-        # config_ui 存的是 dict列表，直接送
-        case.params["test_conditions"] = cond_list
+        case.params["test_conditions"]  = cond_list                              # 条件列表（dict）
         case.params["product_type"]    = product_info.get("product_type", "charger")
-        case.params["test_params"]     = test_params
-        case.params["product_info"]     = product_info
-        # InputEfficiencyTest needs the raw specs_v2 dict for 6级/7级能效判断
-        case.params["specs"]            = product_info.get("specs_v2", {})
-        # protection_logic_v2: {"输出过流保护_mode": "self"|"latch"|"", ...}
-        case.params["protection_logic"] = self.config.get("product_info", {}).get("protection_logic_v2", {})
-        # warmup from test_params, lifted to top-level for convenience
-        case.params["warmup"]          = test_params.get("warmup", "10")
+        case.params["test_params"]     = test_params                             # 透传原始参数字典
+        case.params["product_info"]     = product_info                            # 透传原始产品信息
+        case.params["specs"]            = product_info.get("specs_v2", {})         # InputEfficiencyTest 6级/7级能效判断用
+        case.params["protection_logic"] = product_info.get("protection_logic_v2", {})  # 保护模式（self/latch）
+        case.params["warmup"]           = test_params.get("warmup", "10")           # 预热时间
 
     def set_progress_callback(self, callback: Callable):
         """设置进度回调: callback(case_name, result, index, total, case)
@@ -396,10 +393,7 @@ class TestEngine:
     def _run_single_case(self, case: TestCase, idx: int, total: int):
         """执行单个用例（内部方法）"""
         name = case.name
-        info(f"[TestEngine] [{idx}/{total}] 执行: {name}")
-
-        if self._log_callback:
-            self._log_callback("INFO", f"[{idx}/{total}] 开始: {name}")
+        _log("INFO", f"[TestEngine] [{idx}/{total}] 执行: {name}")
 
         try:
             case._engine = self   # 注入引擎引用，供用例查询暂停/停止状态
@@ -408,13 +402,9 @@ class TestEngine:
 
             # 如果是 ERROR 状态但没有异常上抛，说明 case.run() 内部已捕获，打印 error_message
             if result == "ERROR" and getattr(case, "error_message", None):
-                error(f"[TestEngine] [{idx}/{total}] 完成: {name} -> ERROR | {case.error_message}")
-                if self._log_callback:
-                    self._log_callback("ERROR", f"[{idx}/{total}] {name} ERROR: {case.error_message}")
+                _log("ERROR", f"[TestEngine] [{idx}/{total}] 完成: {name} -> ERROR | {case.error_message}")
             else:
-                info(f"[TestEngine] [{idx}/{total}] 完成: {name} -> {result}")
-                if self._log_callback:
-                    self._log_callback("INFO", f"[{idx}/{total}] {name}: {result}")
+                _log("INFO", f"[TestEngine] [{idx}/{total}] 完成: {name} -> {result}")
 
         except Exception as e:
             import traceback as tb
@@ -422,9 +412,7 @@ class TestEngine:
             case.result = TestResult.ERROR
             case.error_message = str(e)
             case.traceback = tb_str
-            error(f"[TestEngine] [{idx}/{total}] 异常: {name} -> {e}\n{tb_str}")
-            if self._log_callback:
-                self._log_callback("ERROR", f"[{idx}/{total}] {name} 异常: {e}")
+            _log("ERROR", f"[TestEngine] [{idx}/{total}] 异常: {name} -> {e}", exc_info=True)
 
         self._results.append(case)
 

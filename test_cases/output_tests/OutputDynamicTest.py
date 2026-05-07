@@ -301,8 +301,8 @@ class OutputDynamicTest(TestCase):
         if osc and vout_target:
             info(f"[OutputDynamic] osc_auto: ch={ch}, v_peak={v_peak_for_scale}, vout={vout_v}")
             osc.auto_config_channel(ch, v_peak=v_peak_for_scale * 2, coupling="DC",
-                                   bandwidth_limit=True, grid_divisions=5.0,
-                                   offset=vout_target - v_peak_for_scale * 0.5)
+                                   bandwidth_limit=True, grid_divisions=4.0,
+                                   offset=vout_target)
             period = 1.0 / max(freq_hz, 0.001)
             time_per_div = period * 10.0 / 8.0
             osc.set_timebase(time_per_div)

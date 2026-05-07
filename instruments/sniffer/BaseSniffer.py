@@ -23,6 +23,9 @@ import struct
 import time
 import serial
 from abc import ABC, abstractmethod
+import sys
+sys.path.insert(0, r'D:\injoinic--job\自动化测试平台开发\自动化测试平台')
+from instruments.base import InstrumentConnectionState
 
 
 class SnifferError(Exception):
@@ -55,22 +58,47 @@ class BaseSniffer(ABC):
         self._connected = False
         self._debug = debug
         self._ack_timeout_ms = 1500
+        self._state_callback = None
 
     # ================================================================
     #  连接管理
     # ================================================================
 
-    def connect(self) -> bool:
+    def set_state_callback(self, callback):
+        """设置状态回调函数。callback: (key, state, detail) -> None"""
+        self._state_callback = callback
+
+    def _report(self, state: InstrumentConnectionState, detail: str = ""):
+        """通过回调上报状态（无回调时静默）"""
+        if self._state_callback:
+            try:
+                self._state_callback(self.__class__.__name__, state, detail)
+            except Exception:
+                pass
+
+    def connect(self, state_callback=None) -> bool:
         """
         建立 RS232 连接并验证设备。
+
+        Args:
+            state_callback: 可选的状态回调 (key, state, detail) -> None
 
         Returns:
             True = 成功，False = 失败
         """
+        if state_callback is not None:
+            self._state_callback = state_callback
+
         if self._connected:
+            self._report(InstrumentConnectionState.CONNECTED,
+                         f"已连接（重复调用）: {self._port}")
             return True
 
         try:
+            # ── 1. 打开串口 ───────────────────────────
+            self._report(InstrumentConnectionState.OPENING,
+                         f"打开 {self._port} @ 19200")
+
             self._serial = serial.Serial(
                 port=self._port,
                 baudrate=19200,
@@ -85,7 +113,7 @@ class BaseSniffer(ABC):
             self._serial.reset_input_buffer()
             self._serial.reset_output_buffer()
 
-            # 后台接收线程
+            # ── 2. 启动后台接收线程 ────────────────────
             import queue, threading
             self._recv_queue = queue.Queue()
             self._recv_thread_running = True
@@ -107,17 +135,27 @@ class BaseSniffer(ABC):
             self._recv_thread = threading.Thread(target=recv_loop, daemon=True)
             self._recv_thread.start()
 
+            # ── 3. 发送初始化命令 ──────────────────────────
+            self._report(InstrumentConnectionState.INIT, "发送初始化命令")
             self._send_initial_commands()
 
+            # ── 4. 验证身份 ──────────────────────────────
+            self._report(InstrumentConnectionState.VALIDATING,
+                         f"验证设备 @ {self._port}")
             if not self._validate_identity():
-                raise SnifferError(f"Device validation failed at {self._port}")
+                self._report(InstrumentConnectionState.FAILED,
+                             f"设备验证失败: {self._port}")
+                self._disconnectSilently()
+                return False
 
+            # ── 5. 完成 ────────────────────────────────
             self._connected = True
-            print(f"    [{self.__class__.__name__}] Connected: {self._port} (addr={self._slave_addr})")
+            self._report(InstrumentConnectionState.CONNECTED,
+                         f"{self.__class__.__name__} @ {self._port} (addr={self._slave_addr})")
             return True
 
         except Exception as e:
-            print(f"    [{self.__class__.__name__}] Connection failed: {e}")
+            self._report(InstrumentConnectionState.FAILED, f"{e}")
             self._disconnectSilently()
             return False
 
@@ -133,7 +171,8 @@ class BaseSniffer(ABC):
         self._connected = True
         self._slave_addr = slave_addr
         self._serial = None
-        print(f"    [{self.__class__.__name__}] Simulation mode (addr={slave_addr})")
+        self._report(InstrumentConnectionState.CONNECTED,
+                     f"{self.__class__.__name__} [模拟模式] addr={slave_addr}")
 
     # ================================================================
     #  1. 初始化

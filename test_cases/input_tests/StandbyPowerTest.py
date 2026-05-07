@@ -96,7 +96,7 @@ class StandbyPowerTest(TestCase):
         self.measurements["standby_power_w"] = round(pin, 4)
 
         # 规格取 self.spec["待机功耗_lo"]（来自引擎注入或 __init__ 默认值）
-        spec_max = self.spec.get("待机功耗_lo", self._standby_power_max)
+        spec_max = self.spec.get("待机功耗_W_lo", self._standby_power_max)
         pass_flag = pin <= spec_max
 
         self.sub_results.append({

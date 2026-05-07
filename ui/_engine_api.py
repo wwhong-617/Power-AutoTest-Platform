@@ -6,6 +6,7 @@
 import os
 import time
 import traceback
+from logger_config import _log
 import threading
 
 
@@ -26,7 +27,7 @@ class EngineAPI:
         _power_segment_var, _hv_power_var, _lv_power_var
         _spec_vars, _prot_vars
         _prod_name_var, _input_voltage_lo_var, _input_voltage_hi_var
-        _output_voltage_var, _output_power_var
+        _output_voltage_min_var, _output_voltage_max_var, _output_power_var
         _prod_type_vars, _filtered_conditions
         _test_case_defs, _case_cn_to_en, _case_vars
         _instrument_manager, _instruments
@@ -45,16 +46,24 @@ class EngineAPI:
 
         checked_cases: 中文 case 名称列表（来自 _case_vars checkbox 勾选结果）
         """
-        from collections import defaultdict
         from config_schema import build_specs_flat, build_protection_flat, DYN_ROW_FIELDS
         from test_engine import TestEngine
 
         # ---- 产品信息 ----
         prod_name = self._prod_name_var.get().strip() or "Unknown"
-        input_lo  = float(self._input_voltage_lo_var.get() or 90.0)
-        input_hi  = float(self._input_voltage_hi_var.get() or 264.0)
-        output_voltage = float(self._output_voltage_var.get() or 12.0)
-        output_power  = float(self._output_power_var.get() or 65.0)
+
+        def _safe_float(val, default):
+            """尝试将字符串转为 float，失败时返回默认值。"""
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
+        input_lo       = _safe_float(self._input_voltage_lo_var.get(), 90.0)
+        input_hi       = _safe_float(self._input_voltage_hi_var.get(), 264.0)
+        output_voltage_min = _safe_float(self._output_voltage_min_var.get(), None)
+        output_voltage_max = _safe_float(self._output_voltage_max_var.get(), 12.0)
+        output_power   = _safe_float(self._output_power_var.get(), 65.0)
         is_charger = bool(self._prod_type_vars.get("充电器", None) and
                           self._prod_type_vars["充电器"].get() == 1)
         product_type = "charger" if is_charger else "adapter"
@@ -79,33 +88,14 @@ class EngineAPI:
             if cat and eng_key:
                 test_cases_config.setdefault(cat, {})[eng_key] = True
 
-        # ---- 构建 test_conditions_v2：per-case 独立条件字典（不合并，避免去重丢失）----
-        # 结构：{case_key: [cond_dict, ...]}
+        # ---- 构建 test_conditions_v2：per-case 独立条件字典 ----
+        # 过滤逻辑统一在 ui/_conditions.py 的 filter_conditions_by_case() 中完成，
+        # 此处直接透传 _filtered_conditions（已包含各用例的专属过滤结果）。
         test_conditions_v2 = {}
-        filtered_count = 0
         for cn in checked_cases:
             en_key = self._case_cn_to_en.get(cn, cn)
             rows = self._filtered_conditions.get(en_key, []) or self._filtered_conditions.get(cn, [])
-            if TestEngine.CASE_REGISTRY.get(en_key, {}).get("voltage_segment"):
-                groups = defaultdict(list)
-                for row in rows:
-                    if not all(k in row for k in ("vin", "freq", "proto", "vout", "iout")):
-                        continue
-                    key = (str(row["proto"]), str(row["vout"]), str(row["iout"]))
-                    groups[key].append(row)
-                case_filtered = []
-                for key, grp in groups.items():
-                    best = max(grp, key=lambda r: float(r["vin"]) if r["vin"] else 0)
-                    case_filtered.append(best)
-                    filtered_count += 1
-                test_conditions_v2[en_key] = case_filtered
-            else:
-                test_conditions_v2[en_key] = list(rows)
-
-        if filtered_count > 0:
-            self._filter_note = f"（{filtered_count} 个输出组合已过滤为最高输入电压条件）"
-        else:
-            self._filter_note = ""
+            test_conditions_v2[en_key] = list(rows)
 
         # ---- 测试参数 ----
         test_settings = {
@@ -137,7 +127,9 @@ class EngineAPI:
                 "product_name": prod_name,
                 "input_voltage_lo": input_lo,
                 "input_voltage_hi": input_hi,
-                "output_voltage": output_voltage,
+                "output_voltage": output_voltage_max,
+                "output_voltage_min": output_voltage_min,
+                "output_voltage_max": output_voltage_max,
                 "output_power": output_power,
                 "product_type": product_type,
                 "load_startup_enabled": self._load_startup_var.get(),
@@ -151,13 +143,17 @@ class EngineAPI:
             },
             "dut": {
                 "name": prod_name,
-                "output_voltage": output_voltage,
+                "output_voltage": output_voltage_max,
+                "output_voltage_min": output_voltage_min,
+                "output_voltage_max": output_voltage_max,
                 "output_power": output_power,
                 "input_voltage_min": input_lo,
                 "input_voltage_max": input_hi,
             },
             "adapter": {
-                "output_voltage": output_voltage,
+                "output_voltage": output_voltage_max,
+                "output_voltage_min": output_voltage_min,
+                "output_voltage_max": output_voltage_max,
                 "input_voltage_min": input_lo,
                 "input_voltage_max": input_hi,
             },
@@ -238,8 +234,8 @@ class EngineAPI:
                     dur = getattr(case, "duration", 0.0) or 0.0
                     meas = getattr(case, "measurements", {}) or {}
                     params = getattr(case, "params", {}) or {}
-                except Exception:
-                    pass
+                except Exception as e:
+                    _log("WARNING", f"获取结果详情时小异常: {e}")
             extra = ""
             if meas:
                 items = [f"{k}={v:.4g}" for k, v in list(meas.items())[:3]]
@@ -264,8 +260,8 @@ class EngineAPI:
             summary = self._engine.get_summary()
             self._after(lambda: self._on_tests_finished(summary))
         except Exception as e:
+            _log("ERROR", f"测试执行异常: {e}", exc_info=True)
             self._append_run_log(f"[ERROR] 测试执行异常: {e}\n")
-            traceback.print_exc()
             self._after(lambda: self._on_tests_finished(None))
 
     def _on_tests_finished(self, summary):
@@ -294,8 +290,10 @@ class EngineAPI:
                     xlsx_path = generate_excel(json_path, result_dir, dut_name)
                     self._append_run_log(f"[Excel报告已生成] {xlsx_path}\n")
                 except Exception as e2:
+                    _log("ERROR", f"生成Excel报告失败: {e2}", exc_info=True)
                     self._append_run_log(f"[ERROR] 生成Excel报告失败: {e2}\n")
             except Exception as e:
+                _log("ERROR", f"保存结果失败: {e}", exc_info=True)
                 self._append_run_log(f"[ERROR] 保存结果失败: {e}\n")
         else:
             self._append_run_log("\n[%s] 测试已停止\n" % time.strftime("%H:%M:%S"))
@@ -335,4 +333,5 @@ class EngineAPI:
             self._engine.export_results(path)
             self._append_run_log(f"[部分结果已导出] {path}\n")
         except Exception as e:
+            _log("ERROR", f"导出部分结果失败: {e}", exc_info=True)
             self._append_run_log(f"[ERROR] 导出失败: {e}\n")
