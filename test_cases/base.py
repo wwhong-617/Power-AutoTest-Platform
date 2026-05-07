@@ -108,9 +108,17 @@ class TestCase:
 
     def teardown(self, instruments: Dict[str, Any]):
         """
-        清理恢复。
-        用例执行完后恢复仪器状态。
+        清理恢复：用例执行完后统一执行放电流程，再记录结束时间。
+
+        放电流程：AC OFF → 电子负载 CC 恒流放电 → OFF。
+        若子类覆盖 teardown 并直接调用 _step_discharge，则不会重复执行本方法
+        中的放电（因为 base.teardown() 本身在子类之后运行，
+        但若子类通过 super().teardown() 调用，则放电会执行两次，无害）。
         """
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD")
+        )
         self.end_time = time.time()
 
     # =====================================================================

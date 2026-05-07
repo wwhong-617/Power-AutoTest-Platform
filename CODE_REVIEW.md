@@ -284,3 +284,133 @@ UI 层
 13. **考虑引入 pytest 或 unittest 对核心纯函数（`_conditions.py`、`config_schema.py`）编写单元测试**，确保过滤逻辑和配置校验的稳定性。
 
 14. **为 `report_generator.py` 引入模板方法模式**：将 Excel 生成的各阶段（样式/数据/波形/超链接）拆分为独立方法类，提升可测试性和可扩展性。
+
+
+
+
+现在整理完整评估报告：
+
+---
+
+# 自动化测试平台 — 代码评估报告
+
+**检视时间：** 2026-05-08
+**检视范围：** test_engine、base.py、各仪器驱动、测试用例、report_generator、instrument_manager
+
+---
+
+## 一、严重问题（建议优先修复）
+
+### 1. Teardown 缺失 — 仪器无法关闭 ⚠️
+
+`base.py.teardown()` 只记录时间戳，不做任何清理：
+
+```python
+def teardown(self, instruments):
+    self.end_time = time.time()  # 仅此一句
+```
+
+**受影响用例（turns on 设备但无 teardown）：**
+
+| 用例 | 开启设备 | teardown |
+|------|---------|---------|
+| `OutputRippleNoiseTest` | ELOAD | ❌ 无 |
+| `OutputRippleLoadScanTest` | ELOAD | ❌ 无 |
+| `OutputRippleInputScanTest` | ELOAD | ❌ 无 |
+| `OutputPowerOnOffTest` | — | ❌ 无 |
+| `OutputRiseTimeTest` | — | ❌ 无 |
+| `OutputStartupDelayTest` | — | ❌ 无 |
+| `OutputOcpProtectTest` | ELOAD | ❌ 无 |
+| `OutputScpProtectTest` | ELOAD | ❌ 无 |
+| `InputEfficiencyTest` | ELOAD | ❌ 无 |
+
+**后果：** 测试结束后 AC 输出和电子负载保持开启状态，可能影响下一轮测试或损坏 DUT。
+
+**建议：** 在 `base.py` 的 `teardown()` 中默认执行放电清理，子类可覆盖：
+
+```python
+def teardown(self, instruments):
+    self.end_time = time.time()
+    self._step_discharge(
+        instruments.get("AC_SOURCE"),
+        instruments.get("ELOAD")
+    )
+```
+
+---
+
+### 2. GitHub Token 暴露 ⚠️
+
+`sync_to_github.py` 的远程 URL 包含 token：
+```python
+REMOTE = f"https://{TOKEN}@github.com/..."
+```
+push 时 Git 会将含 token 的 URL 记录到 `.git/config`，存在泄露风险。
+
+**建议：** push 前临时注入 token，完成后恢复为 `https://github.com/...`
+
+---
+
+## 二、中等问题
+
+### 3. initialize() 时序存在隐蔽风险
+
+`engine.initialize_all_instruments()` → 调用 `WT333E.initialize()` 时会 `reconnect()`（因为 `initialize` 内容是连通性检查），但 `_run_tests()` 中的 `apply_channel_roles()` 在 engine 初始化**之前**执行。若 `reconnect()` 成功后会话可能已重置通道角色。
+
+### 4. IT7321 `*RST` 后等待时间不足
+
+```python
+self.send_command("*RST")
+time.sleep(0.5)  # ← 只有 0.5s
+```
+
+DSOX4024A 需要 3s，IT7321 手册建议至少 1s，0.5s 可能导致后续命令失败。
+
+### 5. WT333E `initialize()` 职责混乱
+
+```python
+def initialize(self):          # ← 连通性检查（轻量）
+def _send_initial_commands(): # ← 完整初始化（重量）
+def reinitialize():           # ← 又一套初始化
+```
+
+三个方法功能重叠，`reinitialize()` 存在但未在 engine 层被调用。
+
+### 6. DSOX4024A `_verify()` 逐条验证效率低
+
+`set_channel_config()` 中每配置一项都调用一次 `_verify()` 等待响应，增加通信次数。
+
+### 7. `report_generator.py` 过于臃肿（1075 行）
+
+嵌套函数 `_wf_discovery()` / `_write_case_sheet()` 等超过 200 行，建议拆分为独立模块。
+
+---
+
+## 三、架构评估
+
+| 模块 | 行数 | 评价 |
+|------|------|------|
+| `test_engine.py` | 528 | ✅ 清晰，`initialize_all_instruments` 架构合理 |
+| `base.py` | 761 | ⚠️ teardown 太弱，通用方法设计良好 |
+| `instrument_manager.py` | 480 | ✅ 仪器生命周期管理清晰 |
+| `DSOX4024A.py` | 1382 | ✅ SCPI 命令丰富，`_osc_ch_config` 注入机制实用 |
+| `WT333E.py` | 902 | ⚠️ 初始化职责需整理，`_fetch()` 设计优秀 |
+| `IT7321.py` | 410 | ✅ 简洁实用 |
+| `IT8701P.py` | 433 | ✅ 覆盖 LIST/SWEEP 模式 |
+| `config_ui.py` | 707 | ⚠️ 与 engine 耦合过紧 |
+
+**测试用例总数：** 26 个（输入 7 / 输出 8 / 保护 5 / 协议 4 + flow_desc）
+
+---
+
+## 四、低优先级建议
+
+1. **添加仪器超时重试** — SCPI 命令遇超时应自动重试 1-2 次
+2. **DSOX4024A `acquire_waveform()`** — `*RST` 后第一次 `WAVEFORM:DATA?` 可能返回空，建议加预采样等待
+3. **IT6333A 驱动** — 没有 `initialize()` 方法，无法被 engine 层初始化
+4. **用例参数校验** — `verify()` 中应对 `sub_results` 为空的情况做处理
+5. **日志分级** — `logger_config.py` 层级定义需与 `config_ui.py` 中 `append_run_log` 对齐
+
+---
+
+**总体评价：** 架构设计良好，驱动层扎实，主要风险点在于 teardown 覆盖不全导致的设备状态泄漏。建议优先修复问题 1 和 2。
