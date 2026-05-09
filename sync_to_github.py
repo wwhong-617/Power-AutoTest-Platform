@@ -1,18 +1,21 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 GitHub 自动同步脚本
-每2小时自动执行：git add → git commit → git push
-同时也支持手动调用：python sync_to_github.py "提交信息"
+
+修复：push 前临时注入 token 到 remote URL，完成后立即恢复，
+      避免 token 被写入 .git/config 或任何磁盘文件。
 """
 import subprocess
 import sys
 import os
 from datetime import datetime
 
-REPO_DIR = r"D:\injoinic--job\自动化测试平台开发\自动化测试平台"
+REPO_DIR = os.path.dirname(__file__)
+REPO_URL = "https://github.com/wwhong-617/Power-AutoTest-Platform.git"
 TOKEN = os.environ.get("GITHUB_PAT", "")
 if not TOKEN:
     raise ValueError("环境变量 GITHUB_PAT 未设置，请先设置：set GITHUB_PAT=你的Token")
-REMOTE = f"https://{TOKEN}@github.com/wwhong-617/Power-AutoTest-Platform.git"
 
 
 def run(cmd, cwd=REPO_DIR, capture=True):
@@ -30,7 +33,8 @@ def run(cmd, cwd=REPO_DIR, capture=True):
 
 def sync(message=None):
     os.chdir(REPO_DIR)
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始同步...")
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{now}] 开始同步...")
 
     # 检查 git status
     status_out, _ = run("git status --porcelain")
@@ -40,33 +44,48 @@ def sync(message=None):
 
     # 获取变更文件列表
     files = [line.strip()[3:] for line in status_out.strip().splitlines()]
-    print(f"变更文件 ({len(files)} 个): {', '.join(files[:10])}" + (" ..." if len(files) > 10 else ""))
+    print("变更文件 (%d 个): %s" % (len(files), ", ".join(files[:10]) + (" ..." if len(files) > 10 else "")))
 
     # git add .
     run("git add -A")
 
     # 提交
     if message is None:
-        message = f"Auto-sync {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        message = "Auto-sync %s" % datetime.now().strftime('%Y-%m-%d %H:%M')
 
-    commit_out, code = run(f'git commit -m "{message}"')
+    commit_out, code = run('git commit -m "%s"' % message)
     if code != 0:
-        print(f"提交失败: {commit_out}")
+        print("提交失败: %s" % commit_out)
         return
 
-    print(f"提交成功: {message}")
+    print("提交成功: %s" % message)
 
-    # 设置 remote（含 token）
-    run(f'git remote set-url origin {REMOTE}')
+    # ── push：临时注入 token，完成后立即恢复 ──────────────────────
+    # 1. 保存原始 remote URL（不包含 token）
+    orig_remote, _ = run("git remote get-url origin")
+    orig_remote = orig_remote.strip()
 
-    # push
-    push_out, code = run("git push origin master")
-    if code != 0:
-        print(f"推送失败: {push_out}")
-        return
+    # 2. 构造含 token 的 push URL
+    push_remote = "https://%s@github.com/wwhong-617/Power-AutoTest-Platform.git" % TOKEN
 
-    print("推送成功！")
-    print(f"仓库地址: https://github.com/wwhong-617/Power-AutoTest-Platform")
+    try:
+        # 3. 临时写入含 token 的 remote
+        run("git remote set-url origin %s" % push_remote)
+
+        # 4. push
+        push_out, code = run("git push origin master")
+        if code != 0:
+            print("推送失败: %s" % push_out)
+            return
+
+        print("推送成功！")
+
+    finally:
+        # 5. 无论成功失败，都恢复原始 remote URL（不含 token）
+        run("git remote set-url origin %s" % orig_remote)
+        print("Remote URL 已恢复为: %s" % orig_remote)
+
+    print("仓库地址: %s" % REPO_URL)
 
 
 if __name__ == "__main__":

@@ -100,6 +100,10 @@ class DSOX4024A(BaseOscilloscope):
 
     import time   # 模块级导入，供 _verify 等方法使用
 
+    # ================================================================
+    # 0. 连接与角色
+    # ================================================================
+
     def __init__(self, conn_type: str, address: str, timeout_ms: int = 5000):
         super().__init__(conn_type, address, timeout_ms)
         self._model = "DSOX4024A"
@@ -147,7 +151,7 @@ class DSOX4024A(BaseOscilloscope):
         return int(ch.replace("CH", "").replace("ch", ""))
 
     # ================================================================
-    #  语义测量方法（推荐使用）
+    # 1. 语义测量方法（按通道角色）
     # ================================================================
     # 内部所有 measure_voltage_* 方法统一用 self._output_ch
 
@@ -176,13 +180,17 @@ class DSOX4024A(BaseOscilloscope):
         return self.measure_voltage_min(self._dynamic_ch)
 
     # ================================================================
-    #  私有工具方法
+    # 2. 私有工具
     # ================================================================
 
     def _send_initial_commands(self):
-        """发送初始化命令"""
+        """
+        轻量化初始化：*RST + *CLS + 波形数据格式。
+        """
+        self.send_command("*RST", check_esr=False)
+        time.sleep(3.0)   # *RST 需等待约 3s 才完成
         self.send_command("*CLS", check_esr=False)
-        self.send_command(":WAV:FORM BYTE")
+        self.send_command(":WAV:FORM BYTE", check_esr=False)
 
     def _validate_identity(self) -> bool:
         """验证仪器身份"""
@@ -205,33 +213,25 @@ class DSOX4024A(BaseOscilloscope):
             return default
 
     # ================================================================
-    #  1. 初始化
+    # 3. 初始化
     # ================================================================
 
     def initialize(self):
         """
-        示波器初始化：发送 *RST 完整复位，然后关闭 CH1，
-        根据 _osc_ch_config 配置的通道和衰减比写入探头衰减比。
-
-        等效于面板 "Default Setup" 按键效果：
-          - *RST 复位：时基回到 100µs/div，所有通道关闭
-          - :CHAN1:DISP OFF：额外确保 CH1 关闭
-
+        完整初始化：调用轻量化重置 + 关闭所有通道 + 配置衰减比。
         attn 由 instrument_manager 在创建仪器时从 UI test_settings 写入 _osc_ch_config。
-
-        注意：*RST 需等待约 3s 才完成，方法内部自动等待。
         """
         import time
-        self.send_command("*RST")
-        time.sleep(3.0)
+        self._send_initial_commands()
+
         # 先关闭所有通道，再由具体用例按需开启
         for ch in range(1, 5):
-            self.send_command(f":CHAN{ch}:DISP OFF")
+            self.send_command(f":CHAN{ch}:DISP OFF", check_esr=False)
 
         # 从 instrument_manager 写入的 UI 配置读取通道和衰减比
         ch_config = getattr(self, "_osc_ch_config", {})
         import logging
-        logging.getLogger("PowerAutoTest").warning(
+        logging.getLogger("PowerAutoTest").info(
             f"[DSOX4024A] initialize _osc_ch_config={ch_config}"
         )
         if ch_config:
@@ -245,12 +245,12 @@ class DSOX4024A(BaseOscilloscope):
             self._channel_attenuation[output_ch]  = output_attn
             self._channel_attenuation[dynamic_ch] = dynamic_attn
             import logging
-            logging.getLogger("PowerAutoTest").warning(
+            logging.getLogger("PowerAutoTest").info(
                 f"[DSOX4024A] PROB input_ch={input_ch} atten={input_attn} output_ch={output_ch} atten={output_attn} dynamic_ch={dynamic_ch} atten={dynamic_attn}"
             )
-            self.send_command(f":CHAN{input_ch}:PROB {input_attn}")
-            self.send_command(f":CHAN{output_ch}:PROB {output_attn}")
-            self.send_command(f":CHAN{dynamic_ch}:PROB {dynamic_attn}")
+            self.send_command(f":CHAN{input_ch}:PROB {input_attn}", check_esr=False)
+            self.send_command(f":CHAN{output_ch}:PROB {output_attn}", check_esr=False)
+            self.send_command(f":CHAN{dynamic_ch}:PROB {dynamic_attn}", check_esr=False)
 
         else:
             # 未配置时，默认所有通道衰减为 1.0
@@ -258,7 +258,7 @@ class DSOX4024A(BaseOscilloscope):
                 self._channel_attenuation[ch] = 1.0
 
     # ================================================================
-    #  2. 水平控制（时基）
+    # 4. 时基控制
     # ================================================================
 
     def set_timebase(self, scale: float):
@@ -279,7 +279,7 @@ class DSOX4024A(BaseOscilloscope):
                 break
         else:
             scale = tb_list[-1]
-        self.send_command(f":TIM:SCAL {scale}")
+        self.send_command(f":TIM:SCAL {scale}", check_esr=False)
         self._last_timebase = scale   # 记录最终设置的时基值（由 set_timebase 取整后）
 
     def set_timebase_for_duration(self, total_s: float, divisions: int = 10):
@@ -312,12 +312,31 @@ class DSOX4024A(BaseOscilloscope):
                 best = s
         return best
 
+    def _clamp_voltage_scale(self, channel: int, v_scale: float) -> float:
+        """
+        按通道衰减比限制最大电压档位，超限时 round DOWN 到最近兼容档位。
+
+        Keysight DSOX4024A 硬件限制：
+          atten = 1x  → 单格最大 5V/div（满屏 8 格 = 40V）
+          atten = 10x → 单格最大 50V/div
+        其他衰减比按线性插值。
+
+        例如：atten=1，v_scale=6.0 → 超出 5V 上限 → round DOWN 到 5V/div
+        """
+        ch_atten = self._channel_attenuation.get(channel, 1.0)
+        max_scale = ch_atten * 5.0   # atten=1 → 5V, atten=10 → 50V
+        if v_scale <= max_scale:
+            return v_scale
+        # 超出上限，round DOWN 到 1-2-5 序列中最大的不超过 max_scale 的档位
+        candidates = [s for s in self._VOLTAGE_SCALES if s <= max_scale]
+        return candidates[-1] if candidates else self._VOLTAGE_SCALES[0]
+
     def set_timebase_offset(self, offset: float):
         """
         设置时基偏移 (秒)。
         即触发位置相对于屏幕中心的时间偏移。
         """
-        self.send_command(f":TIM:DEL {offset}")
+        self.send_command(f":TIM:DEL {offset}", check_esr=False)
 
     def set_timebase_mode(self, mode: str):
         """
@@ -333,7 +352,7 @@ class DSOX4024A(BaseOscilloscope):
             mode = "MAIN"
         if mode not in ("ROLL", "MAIN"):
             raise ValueError(f"Invalid timebase mode: {mode}. Use ROLL or MAIN.")
-        self.send_command(f":TIM:MODE {mode}")
+        self.send_command(f":TIM:MODE {mode}", check_esr=False)
         self._timebase_mode = mode
 
     # ---------------------- 延迟扫描（Zoom） ----------------------
@@ -341,59 +360,34 @@ class DSOX4024A(BaseOscilloscope):
     def set_zoom_mode(self, enabled: bool):
         """开启或关闭 Zoom（延迟扫描/展开）模式"""
         mode = "DELAYED" if enabled else "NORMAL"
-        self.send_command(f":TIM:MODE {mode}")
+        self.send_command(f":TIM:MODE {mode}", check_esr=False)
 
     def set_zoom_timebase(self, scale: float):
         """设置 Zoom 窗口的时基 (秒/div)"""
-        self.send_command(":TIM:MODE DELAYED")
-        self.send_command(f":TIM:SCAL {scale}")
+        self.send_command(":TIM:MODE DELAYED", check_esr=False)
+        self.send_command(f":TIM:SCAL {scale}", check_esr=False)
 
     def set_zoom_position(self, delay_time: float):
         """设置 Zoom 窗口的延迟位置 (秒)"""
-        self.send_command(":TIM:MODE DELAYED")
-        self.send_command(f":TIM:DEL {delay_time}")
+        self.send_command(":TIM:MODE DELAYED", check_esr=False)
+        self.send_command(f":TIM:DEL {delay_time}", check_esr=False)
 
     def set_main_timebase(self, scale: float):
         """设置主时基 (秒/div)"""
-        self.send_command(":TIM:MODE NORMAL")
-        self.send_command(f":TIM:SCAL {scale}")
+        self.send_command(":TIM:MODE NORMAL", check_esr=False)
+        self.send_command(f":TIM:SCAL {scale}", check_esr=False)
 
     # ================================================================
-    #  3. 垂直控制（通道）
+    # 5. 垂直控制（通道）
     # ================================================================
 
     def set_channel_on(self, channel: int):
         """开启指定通道 (1-4)"""
-        self.send_command(f":CHAN{channel}:DISP ON")
+        self.send_command(f":CHAN{channel}:DISP ON", check_esr=False)
 
     def set_channel_off(self, channel: int):
         """关闭指定通道 (1-4)"""
-        self.send_command(f":CHAN{channel}:DISP OFF")
-
-    def _verify(self, cmd: str, expected: str, channel: int) -> bool:
-        """
-        发送命令后查询确认，不一致则重试一次（最多2次）。
-        采用数值解析对比，避免 SCPI 返回科学计数法导致字符串不匹配。
-        Returns True = 验证通过，False = 始终不一致（但命令已发）。
-        """
-        for attempt in range(2):
-            try:
-                resp = self.query(cmd, delay_ms=200).strip()
-                # 尝试数值对比（处理科学计数法）
-                try:
-                    resp_val = float(resp)
-                    exp_val = float(expected)
-                    if abs(resp_val - exp_val) < 1e-9:
-                        return True
-                except ValueError:
-                    # 非数值（如 ON/OFF、DC/AC），直接字符串对比
-                    if resp == expected:
-                        return True
-                # 不一致，重试一次
-                time.sleep(0.1)
-            except Exception:
-                break
-        return False
+        self.send_command(f":CHAN{channel}:DISP OFF", check_esr=False)
 
     def set_channel_config(self,
                            channel: int,
@@ -403,7 +397,7 @@ class DSOX4024A(BaseOscilloscope):
                            voltage_offset: float = 0.0,
                            bandwidth_limit: bool = True):
         """
-        一次性配置示波器通道的完整参数，写入后逐项查询校验。
+        一次性配置示波器通道的完整参数，写入后批量检查 ESR 是否有错误。
 
         DSOX4024A SCPI 命令顺序：
           1. :CHAN<N>:BWL ON/OFF   → 带宽限制
@@ -424,36 +418,43 @@ class DSOX4024A(BaseOscilloscope):
             return
 
         bwl_val = "ON" if bandwidth_limit else "OFF"
-        self.send_command(f":CHAN{channel}:BWL {bwl_val}")
-        self._verify(f":CHAN{channel}:BWL?", bwl_val, channel)
+        self.send_command(f":CHAN{channel}:BWL {bwl_val}", check_esr=False)
 
         coupling = coupling.upper()
         if coupling not in ("DC", "AC", "GND"):
             coupling = "DC"
-        self.send_command(f":CHAN{channel}:COUP {coupling}")
-        self._verify(f":CHAN{channel}:COUP?", coupling, channel)
+        self.send_command(f":CHAN{channel}:COUP {coupling}", check_esr=False)
 
         # 仅当显式传入 attenuation 时才写入，否则跳过（保持 initialize 设的值）
         if attenuation is not None:
-            self.send_command(f":CHAN{channel}:PROB {attenuation}")
+            self.send_command(f":CHAN{channel}:PROB {attenuation}", check_esr=False)
             self._channel_attenuation[channel] = attenuation
-            self._verify(f":CHAN{channel}:PROB?", str(attenuation), channel)
 
         # 下限保护（防零/负），上限由 _VOLTAGE_SCALES 列表决定，不再硬限制 5V
         voltage_scale = max(0.05, float(voltage_scale))
-        self.send_command(f":CHAN{channel}:SCAL {voltage_scale}")
-        self._verify(f":CHAN{channel}:SCAL?", str(voltage_scale), channel)
+        self.send_command(f":CHAN{channel}:SCAL {voltage_scale}", check_esr=False)
 
-        self.send_command(f":CHAN{channel}:OFFS {voltage_offset}")
-        self._verify(f":CHAN{channel}:OFFS?", str(voltage_offset), channel)
+        self.send_command(f":CHAN{channel}:OFFS {voltage_offset}", check_esr=False)
+
+        # 批量检查 ESR，若有错误位则记录警告（Keysight 命令可靠，错误罕见）
+        try:
+            esr = self.query("*ESR?").strip()
+            esr_val = int(esr)
+            if esr_val != 0:
+                import logging
+                logging.getLogger("PowerAutoTest").warning(
+                    f"[DSOX4024A] set_channel_config CH{channel} ESR={esr_val}（命令执行有误）"
+                )
+        except Exception:
+            pass
 
     def set_voltage_scale(self, channel: int, scale: float):
         """设置通道电压档位 (V/div)"""
-        self.send_command(f":CHAN{channel}:SCAL {scale}")
+        self.send_command(f":CHAN{channel}:SCAL {scale}", check_esr=False)
 
     def set_channel_offset(self, channel: int, offset: float):
         """设置通道垂直偏移 (V)"""
-        self.send_command(f":CHAN{channel}:OFFS {offset}")
+        self.send_command(f":CHAN{channel}:OFFS {offset}", check_esr=False)
 
     def auto_config_channel(self,
                             channel: int,
@@ -487,18 +488,22 @@ class DSOX4024A(BaseOscilloscope):
 
         # attenuation=None 时不操作，沿用 initialize() 或上一次设置的值
         import logging
-        logging.getLogger("PowerAutoTest").warning(
+        logging.getLogger("PowerAutoTest").info(
             f"[DSOX4024A] auto_config ch={channel} v_peak={v_peak} atten={attenuation}"
         )
 
-        # 1 ≤ attenuation ≤ 10（无探头衰减或低衰减探头）时，直接用计算值，不查1-2-5档位表
+        # 衰减比 ≤10x 且计算值在硬件直接设置范围内 → 直接用计算值（不取整）
+        # 衰减比 >10x 或计算值超出范围 → round 到标准档位后 clamp
         ch_atten = self._channel_attenuation.get(channel, 1.0)
-        if 1.0 <= ch_atten <= 10.0:
-            v_scale = v_peak / grid_divisions
+        max_scale = ch_atten * 5.0   # atten=1x→5V, atten=10x→50V
+        v_raw = v_peak / grid_divisions
+        if ch_atten <= 10.0 and v_raw <= max_scale:
+            v_scale = v_raw          # 直接设置，不需要取整
         else:
-            v_scale = self.round_voltage_scale(v_peak / grid_divisions)
+            v_scale = self.round_voltage_scale(v_raw)
+            v_scale = self._clamp_voltage_scale(channel, v_scale)
 
-        v_offset = offset if offset is not None else (v_peak * 1.5 / grid_divisions)
+        v_offset = offset if offset is not None else (v_scale * 2)
 
         self.set_channel_config(
             channel=channel,
@@ -521,7 +526,7 @@ class DSOX4024A(BaseOscilloscope):
         valid = ["DC", "AC", "GND"]
         if coupling not in valid:
             raise ValueError(f"Invalid channel coupling: {coupling}. Must be one of {valid}")
-        self.send_command(f":CHAN{channel}:COUP {coupling}")
+        self.send_command(f":CHAN{channel}:COUP {coupling}", check_esr=False)
 
     def get_channel_coupling(self, channel: int) -> str:
         """查询通道耦合方式，返回 "DC" / "AC" / "GND" """
@@ -543,7 +548,7 @@ class DSOX4024A(BaseOscilloscope):
         if not self._connected:
             return
         value = "ON" if limit_on else "OFF"
-        self.send_command(f":CHAN{channel}:BWL {value}")
+        self.send_command(f":CHAN{channel}:BWL {value}", check_esr=False)
 
     def get_bandwidth_limit(self, channel: int) -> bool:
         """查询通道带宽限制状态。True = 开启，False = 关闭"""
@@ -556,7 +561,7 @@ class DSOX4024A(BaseOscilloscope):
             return False
 
     # ================================================================
-    #  4. 触发设置
+    # 6. 触发设置
     # ================================================================
 
     def set_trigger_mode(self, mode: str):
@@ -570,7 +575,7 @@ class DSOX4024A(BaseOscilloscope):
         mode = mode.upper()
         if mode not in valid_modes:
             raise ValueError(f"Invalid trigger mode: {mode}. Must be one of {valid_modes}")
-        self.send_command(f":TRIGGER:MODE {mode}")
+        self.send_command(f":TRIGGER:MODE {mode}", check_esr=False)
 
     def set_trigger_source(self, source: str):
         """
@@ -583,11 +588,11 @@ class DSOX4024A(BaseOscilloscope):
         valid_sources = ["CHAN1", "CHAN2", "CHAN3", "CHAN4", "EXT"]
         if source not in valid_sources:
             raise ValueError(f"Invalid trigger source: {source}. Must be one of {valid_sources}")
-        self.send_command(f":TRIGGER:EDGE:SOURCE {source}")
+        self.send_command(f":TRIGGER:EDGE:SOURCE {source}", check_esr=False)
 
     def set_trigger_level(self, level: float):
         """设置触发电平 (V)"""
-        self.send_command(f":TRIGGER:EDGE:LEVEL {level}")
+        self.send_command(f":TRIGGER:EDGE:LEVEL {level}", check_esr=False)
 
     def set_trigger_slope(self, slope: str):
         """
@@ -600,7 +605,7 @@ class DSOX4024A(BaseOscilloscope):
         valid_slopes = ["POS", "NEG", "BOTH"]
         if slope not in valid_slopes:
             raise ValueError(f"Invalid trigger slope: {slope}. Must be one of {valid_slopes}")
-        self.send_command(f":TRIGGER:EDGE:SLOPE {slope}")
+        self.send_command(f":TRIGGER:EDGE:SLOPE {slope}", check_esr=False)
 
     def set_trigger_coupling(self, coupling: str):
         """
@@ -613,11 +618,11 @@ class DSOX4024A(BaseOscilloscope):
         valid_couplings = ["DC", "AC", "LFREJ", "HFREJ"]
         if coupling not in valid_couplings:
             raise ValueError(f"Invalid trigger coupling: {coupling}. Must be one of {valid_couplings}")
-        self.send_command(f":TRIGGER:EDGE:COUPLING {coupling}")
+        self.send_command(f":TRIGGER:EDGE:COUPLING {coupling}", check_esr=False)
 
     def force_trigger(self):
         """强制触发一次（用于手动触发采集）"""
-        self.send_command(":TRIGGER:FORCE")
+        self.send_command(":TRIGGER:FORCE", check_esr=False)
 
     def set_single_trigger(self):
         """
@@ -628,6 +633,10 @@ class DSOX4024A(BaseOscilloscope):
         需用独立的 :SINGLE 命令。
         """
         self.send_command(":SINGLE", check_esr=False)
+
+    # ================================================================
+    # 7. 采集控制
+    # ================================================================
 
     def set_acquire_mode(self, mode: str):
         """
@@ -643,7 +652,7 @@ class DSOX4024A(BaseOscilloscope):
         valid = ("NORMAL", "AVERAGE", "PEAK", "HRESOLUTION")
         if mode.upper() not in valid:
             raise ValueError(f"无效采集模式: {mode}，可选: {valid}")
-        self.send_command(f":ACQUIRE:TYPE {mode.upper()}")
+        self.send_command(f":ACQUIRE:TYPE {mode.upper()}", check_esr=False)
 
     def set_acquire_count(self, count: int):
         """
@@ -655,7 +664,7 @@ class DSOX4024A(BaseOscilloscope):
         """
         if count < 2 or count > 65536:
             raise ValueError(f"采集次数超出范围 (2~65536): {count}")
-        self.send_command(f":ACQUIRE:COUNT {count}")
+        self.send_command(f":ACQUIRE:COUNT {count}", check_esr=False)
 
     def get_acquire_mode(self) -> str:
         """查询当前采集模式。"""
@@ -715,7 +724,7 @@ class DSOX4024A(BaseOscilloscope):
         self.send_command(":STOP", check_esr=False)
 
     # ================================================================
-    #  5. 测量与光标
+    # 8. 测量配置
     # ================================================================
 
     # ---------------------- 测量接口（BaseOscilloscope 抽象接口） ----------------------
@@ -755,19 +764,23 @@ class DSOX4024A(BaseOscilloscope):
         }
         _mn = _meas_map.get(measurement_type.upper(), measurement_type.upper())
         meas_cmd = f":MEASure:{_mn} {source}"
-        self.send_command(meas_cmd)
+        self.send_command(meas_cmd, check_esr=False)
 
     def clear_screen(self):
         """清屏，清除示波器屏幕上所有波形和测量数据（:DISP:CLEAR）"""
         if not self._connected:
             return
-        self.send_command(":DISP:CLEAR")
+        self.send_command(":DISP:CLEAR", check_esr=False)
 
     def clear_measurements(self):
         """清除所有已添加的测量项"""
         if not self._connected:
             return
-        self.send_command(":MEASURE:CLE")
+        self.send_command(":MEASURE:CLE", check_esr=False)
+
+    # ================================================================
+    # 9. 测量查询
+    # ================================================================
 
     def set_measurement_source(self, source: str):
         """
@@ -1083,7 +1096,7 @@ class DSOX4024A(BaseOscilloscope):
         valid = ["OFF", "MANUAL", "TRACK", "DELTA"]
         if mode not in valid:
             raise ValueError(f"Invalid cursor mode: {mode}. Must be one of {valid}")
-        self.send_command(f":MARK:MODE {mode}")
+        self.send_command(f":MARK:MODE {mode}", check_esr=False)
 
     def set_cursor_source(self, source: str):
         """
@@ -1096,7 +1109,7 @@ class DSOX4024A(BaseOscilloscope):
         valid = ["CHAN1", "CHAN2", "CHAN3", "CHAN4", "FUNC", "MATH"]
         if source not in valid:
             raise ValueError(f"Invalid cursor source: {source}. Must be one of {valid}")
-        self.send_command(f":MARK:X1Y1source {source}")
+        self.send_command(f":MARK:X1Y1source {source}", check_esr=False)
 
     def set_cursor_position(self, cursor: str, x: float = None, y: float = None):
         """
@@ -1113,14 +1126,14 @@ class DSOX4024A(BaseOscilloscope):
         # 光标 A -> X1/Y1，光标 B -> X2/Y2
         if cursor == "A":
             if x is not None:
-                self.send_command(f":MARK:X1Position {x}")
+                self.send_command(f":MARK:X1Position {x}", check_esr=False)
             if y is not None:
-                self.send_command(f":MARK:Y1Position {y}")
+                self.send_command(f":MARK:Y1Position {y}", check_esr=False)
         elif cursor == "B":
             if x is not None:
-                self.send_command(f":MARK:X2Position {x}")
+                self.send_command(f":MARK:X2Position {x}", check_esr=False)
             if y is not None:
-                self.send_command(f":MARK:Y2Position {y}")
+                self.send_command(f":MARK:Y2Position {y}", check_esr=False)
 
     def get_cursor_position(self, cursor: str) -> dict:
         """
@@ -1138,7 +1151,7 @@ class DSOX4024A(BaseOscilloscope):
         if not self._connected:
             return {"x": 0.0, "y": 0.0}
         try:
-            self.send_command(":MARK:MODE DELTA")
+            self.send_command(":MARK:MODE DELTA", check_esr=False)
             if cursor == "A":
                 x = float(self.query(":MARK:X1Position?"))
                 y = float(self.query(":MARK:Y1Position?"))
@@ -1163,7 +1176,7 @@ class DSOX4024A(BaseOscilloscope):
         if not self._connected:
             return {"delta_x": 0.0, "delta_y": 0.0, "freq": 0.0}
         try:
-            self.send_command(":MARK:MODE DELTA")
+            self.send_command(":MARK:MODE DELTA", check_esr=False)
             dx = float(self.query(":MARK:XDELta?"))
             dy = float(self.query(":MARK:YDELta?"))
             freq = 0.0
@@ -1187,7 +1200,11 @@ class DSOX4024A(BaseOscilloscope):
             return 0.0
 
     # ================================================================
-    #  6. 波形与截图
+    # 10. 光标控制
+    # ================================================================
+
+    # ================================================================
+    # 11. 波形与截图
     # ================================================================
 
     def acquire_waveform(self, channel: int) -> tuple:
@@ -1212,9 +1229,9 @@ class DSOX4024A(BaseOscilloscope):
             return np.array([]), np.array([])
 
         try:
-            self.send_command(f":WAV:SOUR CHAN{channel}")
-            self.send_command(":WAVEFORM:POINTS:MODE RAW")
-            self.send_command(":WAV:FORM BYTE")
+            self.send_command(f":WAV:SOUR CHAN{channel}", check_esr=False)
+            self.send_command(":WAVEFORM:POINTS:MODE RAW", check_esr=False)
+            self.send_command(":WAV:FORM BYTE", check_esr=False)
 
             preamble_str = self.query(":WAV:PRE?")
             vals = [v.strip() for v in preamble_str.split(",")]
@@ -1251,7 +1268,7 @@ class DSOX4024A(BaseOscilloscope):
             return x_data, y_data
 
         except Exception as e:
-            print(f"    [DSOX4024A] Waveform acquire failed: {e}")
+            logger.warning(f"[DSOX4024A] Waveform acquire failed: {e}")
             return np.array([]), np.array([])
 
     def save_screenshot(self, filepath: str) -> str:
@@ -1282,7 +1299,7 @@ class DSOX4024A(BaseOscilloscope):
             pos = raw.find(png_sig)
 
             if pos < 0:
-                print(f"[DSOX4024A] save_screenshot: PNG signature not found")
+                logger.warning(f"[DSOX4024A] save_screenshot: PNG signature not found")
                 return None
 
             png_data = raw[pos:]
@@ -1297,7 +1314,7 @@ class DSOX4024A(BaseOscilloscope):
             return filepath
 
         except Exception as e:
-            print(f"[DSOX4024A] save_screenshot failed: {e}")
+            logger.warning(f"[DSOX4024A] save_screenshot failed: {e}")
             return None
 
     def save_screenshot_with_measurements(self, channel: int, filepath: str) -> str:
@@ -1378,5 +1395,5 @@ class DSOX4024A(BaseOscilloscope):
             return filepath
 
         except Exception as e:
-            print(f"[DSOX4024A] save_screenshot_with_measurements failed: {e}")
+            logger.warning(f"[DSOX4024A] save_screenshot_with_measurements failed: {e}")
             return ""

@@ -19,12 +19,14 @@ BaseSniffer - 诱骗器/协议测试板抽象基类
 各型号驱动继承此类，实现所有抽象方法。
 """
 
+import os
 import struct
 import time
 import serial
+import threading
 from abc import ABC, abstractmethod
 import sys
-sys.path.insert(0, r'D:\injoinic--job\自动化测试平台开发\自动化测试平台')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from instruments.base import InstrumentConnectionState
 
 
@@ -58,6 +60,7 @@ class BaseSniffer(ABC):
         self._connected = False
         self._debug = debug
         self._ack_timeout_ms = 1500
+        self._serial_lock = threading.Lock()
         self._state_callback = None
 
     # ================================================================
@@ -122,7 +125,8 @@ class BaseSniffer(ABC):
                 while self._recv_thread_running and self._serial.is_open:
                     try:
                         if self._serial.in_waiting > 0:
-                            data = self._serial.read(self._serial.in_waiting)
+                            with self._serial_lock:
+                                data = self._serial.read(self._serial.in_waiting)
                             if data:
                                 self._recv_queue.put(data)
                                 if self._debug:
@@ -386,16 +390,17 @@ class BaseSniffer(ABC):
                     return False
                 self._serial.timeout = remaining
 
-                ch = self._serial.read(1)
-                if not ch:
-                    continue
-                if ch[0] == self.HEADER:
-                    rest = self._serial.read(4)
-                    if len(rest) == 4:
-                        if self._debug:
-                            print(f"  [RX] {(ch + rest).hex().upper()}")
-                        if rest[2] == self.CMD_ACK:
-                            return True
+                with self._serial_lock:
+                    ch = self._serial.read(1)
+                    if not ch:
+                        continue
+                    if ch[0] == self.HEADER:
+                        rest = self._serial.read(4)
+                        if len(rest) == 4:
+                            if self._debug:
+                                print(f"  [RX] {(ch + rest).hex().upper()}")
+                            if rest[2] == self.CMD_ACK:
+                                return True
                 if time_module.time() >= deadline:
                     if self._debug:
                         print(f"  [RX] timeout")

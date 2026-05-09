@@ -249,8 +249,8 @@ class OutputRippleLoadScanTest(TestCase):
         time_per_div = total_s / 8.0
 
         if osc:
-            osc.set_timebase_mode("ROLL")
             osc.set_timebase(time_per_div)
+            osc.set_timebase_mode("ROLL")
             osc.clear_screen()
             osc.run()
 

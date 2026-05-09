@@ -431,7 +431,7 @@ class OutputScpProtectTest(TestCase):
             osc.set_timebase_mode("NORMAL")
             osc.set_timebase(self.TIME_BASE_S)
             osc.set_channel_on(ch_out)
-            osc.auto_config_channel(ch_out, v_peak=vout_target * 1.5, coupling="DC")
+            osc.auto_config_channel(ch_out, v_peak=vout_target * 1.2, coupling="DC")
             osc.set_trigger_source(f"CHAN{ch_out}")
             osc.set_trigger_coupling("DC")
             osc.set_trigger_slope("NEG")

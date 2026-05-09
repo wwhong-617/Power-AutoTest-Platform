@@ -40,9 +40,20 @@ class IT6333A(BaseDCSource):
     # ---------------------- 私有实现 ----------------------
 
     def _send_initial_commands(self):
-        """发送初始化命令"""
+        """
+        轻量化初始化：*RST + *CLS。
+        IT6333A 通过 USB/TCPIP 自动进入远程模式，无需 SYST:REM。
+        """
+        self.send_command("*RST", check_esr=False)
+        time.sleep(0.5)
         self.send_command("*CLS", check_esr=False)
         time.sleep(0.05)
+
+    def initialize(self):
+        """
+        完整初始化：调用轻量化重置。
+        """
+        self._send_initial_commands()
 
     def _validate_identity(self) -> bool:
         """验证仪器身份"""

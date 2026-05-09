@@ -89,7 +89,11 @@ class IT7321(BaseACSource):
     # ================================================================
 
     def _send_initial_commands(self):
-        """发送初始化命令（连接时调用）。"""
+        """
+        轻量化初始化：*RST + *CLS + SYST:REM。
+        """
+        self.send_command("*RST", check_esr=False)
+        time.sleep(0.5)
         self.send_command("*CLS", check_esr=False)
         self.send_command("SYST:REM")
 
@@ -105,12 +109,9 @@ class IT7321(BaseACSource):
 
     def initialize(self):
         """
-        交流源初始化：*RST 复位 → *CLS 清除状态 → SYST:REM 进入远程 → 档位设为 HIGH。
+        完整初始化：调用轻量化重置 + 电流量程设为 HIGH。
         """
-        self.send_command("*RST")
-        time.sleep(0.5)
-        self.send_command("*CLS", check_esr=False)
-        self.send_command("SYST:REM")
+        self._send_initial_commands()
         self.set_ac_source_range("HIGH")
 
     # ================================================================

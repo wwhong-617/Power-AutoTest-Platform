@@ -36,7 +36,7 @@ Yokogawa WT333E 二通道功率计驱动。
   1. *RST  → 清除所有状态（DDE 清除）
   2. *CLS  → 清除错误寄存器
   3. 配置量程/接线/NUMERIC
-  4. INP:ETS OFF + *CLS → 关闭瞬态抑制、清除 latch
+  4. *CLS + INP:ETS OFF → 先清 latch，再关闭瞬态抑制
   5. sleep(2.0) → 等待测量系统就绪（约 2s）
 
 测量方式：NUMERIC:NORMAL (ASCII) + :NUMERIC:NORMAL:VALUE?
@@ -97,10 +97,10 @@ class WT333E(BasePowerMeter):
 
     def connect(self) -> bool:
         """
-        使用 NI VISA backend 建立连接，并执行完整初始化。
+        使用 NI VISA backend 建立连接，并执行轻量化初始化。
 
-        初始化顺序：*RST → *CLS → 量程配置 → NUMERIC 配置 → ETS OFF → 等待 2s
-        详见 _send_initial_commands()
+        connect() 时调用 _send_initial_commands()（*RST + *CLS）。
+        完整初始化（含量程/NUMERIC/DISP 等）由 initialize() 在每次测试运行前执行。
         """
         try:
             logger.info(f"[WT333E] connect() 开始，地址={self._address}")
@@ -139,134 +139,127 @@ class WT333E(BasePowerMeter):
             self._resource = None
         self._connected = False
 
-    def reinitialize(self):
-        """
-        重新执行完整初始化。
-
-        测试运行前强制调用，确保仪器处于已知状态。
-        等同于 disconnect() → connect()，但保留 resource 句柄。
-        """
-        if not self._connected:
-            logger.warning("[WT333E] reinitialize() 仪器未连接，跳过")
-            return
-        logger.info("[WT333E] reinitialize() 重新执行完整初始化")
-        self._send_initial_commands()
-        logger.info("[WT333E] reinitialize() 完成")
-
     # =========================================================================
-    # 初始化命令序列（connect / reinitialize / initialize 共享）
+    # 初始化
     #
-    # 【重要】必须在最开头执行 *RST，否则之前残留的 DDE 错误位会导致
-    # 后续所有命令报 ESR 8（DDE），即使命令本身正确也无法执行。
+    # 职责划分：
+    #   _send_initial_commands() → 轻量化：*RST + *CLS（连接时调用一次）
+    #   initialize()             → 完整化：调用 _send_initial_commands() + 所有仪器特定配置
     # =========================================================================
 
     def _send_initial_commands(self):
         """
-        发送完整初始化命令序列。
+        轻量化初始化：*RST 复位 → *CLS 清除错误。
 
-        命令顺序（经验证，实测有效）：
-          1. *RST + *CLS              → 清除所有错误状态
-          2. INPUT:WIRING P1W3        → 接线模式（WT333E 不支持 P1W2）
-          3. VOLTAGE:RANGE / AUTO     → CH1 量程配置
-          4. CURRENT:RANGE / AUTO     → CH1 量程配置
-          5. VOLTAGE:RANGE / AUTO     → CH2 量程配置
-          6. CURRENT:RANGE / AUTO     → CH2 量程配置
-          7. NUMERIC:NORMAL:ITEM1~6   → 配置显示项
-          8. INTEG:RESET              → 积分复位
-          9. INP:ETS OFF + *CLS       → 关闭瞬态抑制 + 清除 latch
-         10. sleep(2.0)               → 等待测量系统就绪
+        connect() 时调用一次，确保仪器干净在线。
+        不含任何仪器特定参数（量程/NUMERIC 等）。
 
-        注意：
-          - VOLTAGE:INPUT / CURRENT:INPUT 命令不存在！
-            量程设置直接用 VOLTAGE:RANGE <V> / CURRENT:RANGE <A>
-          - INTEG: 前缀不要冒号！正确是 INTEG:START（实测有效）
+        注意：*RST 需要约 2s 才能完成复位，此处等待 2s。
         """
-        logger.info("[WT333E] 初始化开始")
-
-        # ── 1. 清除错误寄存器 ────────────────────────────────
-        # 注意：*RST 会重置仪器到出厂默认（含前面板显示配置），
-        # 导致显示面板"闪一下"。已确认 *CLS 单独就能清除 ESR，
-        # 在 SCPI 命令全部正确的前提下不需要 *RST。
+        logger.info("[WT333E] _send_initial_commands 轻量化初始化")
+        self.send_command("*RST", check_esr=False)
+        time.sleep(2.0)   # WT333E *RST 约需 2s 才能完成
         self.send_command("*CLS", check_esr=False)
-        time.sleep(0.3)
+        logger.info("[WT333E] _send_initial_commands 完成")
 
-        # ── 2. 接线模式 ──────────────────────────────────────
+    def initialize(self):
+        """
+        完整初始化：调用轻量化重置 + 所有仪器特定配置。
+
+        test_engine.run_all() 每次运行前调用此方法，
+        确保仪器处于已知干净状态。
+        """
+        if not self._connected:
+            logger.warning("[WT333E] initialize: 未连接，跳过")
+            return False
+        logger.info("[WT333E] initialize: 开始完整初始化")
+        self._send_initial_commands()
+
+        # ── 接线模式 ──────────────────────────────────────
         self.send_command("INPUT:WIRING P1W3", check_esr=False)
-        # 输入类型：RMS（交流有效值）
         self.send_command("INPUT:MODE RMS", check_esr=False)
 
-        # ── 3. CH1 量程（自动）───────────────────────────────
+        # ── CH1 量程（自动）───────────────────────────────
         self.send_command("VOLTAGE:RANGE 300", check_esr=False)
         self.send_command("VOLTAGE:AUTO ON", check_esr=False)
         self.send_command("CURRENT:RANGE 20", check_esr=False)
         self.send_command("CURRENT:AUTO ON", check_esr=False)
 
-        # ── 4. CH2 量程（自动）───────────────────────────────
+        # ── CH2 量程（自动）───────────────────────────────
         self.send_command("VOLTAGE:RANGE 15", check_esr=False)
         self.send_command("VOLTAGE:AUTO ON", check_esr=False)
         self.send_command("CURRENT:RANGE 5", check_esr=False)
         self.send_command("CURRENT:AUTO ON", check_esr=False)
 
-        # ── 5. NUMERIC NORMAL 6项 ───────────────────────────
+        # ── 等待测量系统就绪（NUMERIC 配置前必须）──────
+        time.sleep(0.5)
+
+        # ── NUMERIC NORMAL 6项 ───────────────────────────
         self.send_command(":NUMERIC:NORMAL:ITEM1 U,1", check_esr=False)
         self.send_command(":NUMERIC:NORMAL:ITEM2 I,1", check_esr=False)
         self.send_command(":NUMERIC:NORMAL:ITEM3 P,1", check_esr=False)
         self.send_command(":NUMERIC:NORMAL:ITEM4 U,2", check_esr=False)
         self.send_command(":NUMERIC:NORMAL:ITEM5 I,2", check_esr=False)
         self.send_command(":NUMERIC:NORMAL:ITEM6 P,2", check_esr=False)
+        logger.info("[WT333E] NUMERIC NORMAL 6项配置完成")
 
-        # ── 6. 积分复位 ──────────────────────────────────────
+        # ── 积分复位 ──────────────────────────────────────
         self.send_command("INTEG:RESET", check_esr=False)
 
-        # ── 7. 关闭 ETS 瞬态抑制 + 清除 latch ───────────────
-        self.send_command("INP:ETS OFF", check_esr=False)
-        self.send_command("*CLS", check_esr=False)
+        # ── 关闭 ETS 瞬态抑制（先清 latch 再发命令）─────
+        self._clear_ets_with_retry()
 
-        # ── 8. 前面板显示配置（DISP）────────────────────────
-        # DISP 控制仪器前面板显示内容，与 NUMERIC（远程查询）独立。
-        # 显示顺序：输入电压、输入功率、输出电压、输出电流
-        self.send_command(":DISP:NORM:ITEM1 U,1", check_esr=False)    # CH1 电压（输入）
-        self.send_command(":DISP:NORM:ITEM2 P,1", check_esr=False)    # CH1 功率（输入）
-        self.send_command(":DISP:NORM:ITEM3 U,2", check_esr=False)    # CH2 电压（输出）
-        self.send_command(":DISP:NORM:ITEM4 I,2", check_esr=False)    # CH2 电流（输出）
+        # ── 前面板显示配置（DISP）─────────────────────────
+        self.send_command(":DISP:NORM:ITEM1 U,1", check_esr=False)
+        self.send_command(":DISP:NORM:ITEM2 P,1", check_esr=False)
+        self.send_command(":DISP:NORM:ITEM3 U,2", check_esr=False)
+        self.send_command(":DISP:NORM:ITEM4 I,2", check_esr=False)
 
-        # ── 9. 等待测量系统就绪 ─────────────────────────────
+        # ── 等待测量系统就绪 ─────────────────────────────
         time.sleep(2.0)
-        logger.info("[WT333E] 初始化完成")
+        logger.info("[WT333E] initialize 完成")
+        return True
 
-    def initialize(self):
+    def _clear_ets_with_retry(self):
         """
-        轻量连接确认（供 base.py setup 调用）。
+        清除 ETS 瞬态抑制模式，带重试机制。
 
-        connect() 已做过完整初始化，这里只确认连接有效：
-        - 查询 *IDN? 确认仪器响应
-        - 无响应则尝试 reconnect() 重建连接
-        - 不重发量程/NUMERIC/DISP 等配置命令（connect 时已设置好）
+        命令顺序（实测有效）：INP:ETS OFF → *CLS。
+        INP:ETS OFF 发出后若仪器仍处于 ETS latch 状态，
+        会报 Command Error（ESR=32），此时重试直到成功。
         """
-        if not self._connected:
-            logger.warning("[WT333E] initialize: 未连接，尝试 reconnect...")
-            return bool(self.reconnect())
-
-        try:
-            idn = self.query("*IDN?").strip()
-            if "WT" in idn or "YOKOGAWA" in idn or "SIMULATION" in idn:
-                return True
-            logger.warning(f"[WT333E] initialize: 身份验证异常: {idn}")
-            return bool(self.reconnect())
-        except Exception as e:
-            logger.warning(f"[WT333E] initialize: 查询失败 {e}，尝试 reconnect...")
-            return bool(self.reconnect())
+        for attempt in range(1, 4):
+            self.send_command("INP:ETS OFF", check_esr=False)
+            self.send_command("*CLS", check_esr=False)
+            # 验证 ESR：ESR=32 说明 INP:ETS OFF 被拒绝（ETS latch 未解除）
+            try:
+                esr = self.query("*ESR?").strip()
+                esr_val = int(esr)
+                if esr_val == 0:
+                    logger.info(f"[WT333E] ETS 已清除（第{attempt}次）")
+                    return
+                elif esr_val == 32:
+                    # Command Error = INP:ETS OFF 被拒绝，ETS latch 仍锁着，重试
+                    logger.warning(
+                        f"[WT333E] ETS 清除第{attempt}次 ESR=32（被拒绝），重试..."
+                    )
+                else:
+                    logger.warning(
+                        f"[WT333E] ETS 清除第{attempt}次 ESR={esr_val}，重试..."
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[WT333E] ETS 清除第{attempt}次 ESR 查询失败: {e}，重试..."
+                )
+            time.sleep(0.5)
+        logger.warning("[WT333E] ETS 清除未能在3次内完成，继续执行")
 
     def clear_ets(self):
         """
-        清除 ETS 瞬态抑制模式。
-
-        ETS (Excessive Transient Suppression) 开启时会抑制峰值电压，
-        导致过冲波形被过滤掉。在测试开始时关闭即可。
+        清除 ETS 瞬态抑制模式（带重试）。
+        详见 _clear_ets_with_retry()。
         """
-        self.send_command("INP:ETS OFF", check_esr=False)
-        self.send_command("*CLS", check_esr=False)
-        logger.info("[WT333E] ETS 已清除")
+        self._clear_ets_with_retry()
 
     # =========================================================================
     # 核心读取

@@ -80,8 +80,13 @@ class WT322E(BasePowerMeter):
     # ================================================================
 
     def _send_initial_commands(self):
+        """
+        轻量化初始化：*RST + *CLS。
+        WT322E 通过 USB/TCPIP 自动进入远程模式，无需 SYST:REM。
+        """
+        self.send_command("*RST", check_esr=False)
+        time.sleep(0.5)
         self.send_command("*CLS", check_esr=False)
-        self.send_command("FORMAT DATA REAL")
 
     def _validate_identity(self) -> bool:
         if any(x in self._idn for x in ["WT322", "WT300E", "YOKOGAWA", "SIMULATION"]):
@@ -128,10 +133,10 @@ class WT322E(BasePowerMeter):
     # ================================================================
 
     def initialize(self):
-        """功率计初始化：*RST → *CLS → FORMAT REAL → 默认量程"""
-        self.send_command("*RST")
-        time.sleep(1.0)
-        self.send_command("*CLS", check_esr=False)
+        """
+        完整初始化：调用轻量化重置 + FORMAT + 默认量程。
+        """
+        self._send_initial_commands()
         self.send_command("FORMAT DATA REAL")
         self.set_voltage_auto_range(0, True)
         self.set_voltage_auto_range(1, True)

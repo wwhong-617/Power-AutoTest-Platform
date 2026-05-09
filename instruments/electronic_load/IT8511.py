@@ -89,6 +89,11 @@ class IT8511(BaseElectronicLoad):
     # ================================================================
 
     def _send_initial_commands(self):
+        """
+        轻量化初始化：*RST + *CLS + SYST:REM。
+        """
+        self.send_command("*RST", check_esr=False)
+        time.sleep(0.5)
         self.send_command("*CLS", check_esr=False)
         self.send_command("SYST:REM", check_esr=False)
 
@@ -103,12 +108,9 @@ class IT8511(BaseElectronicLoad):
 
     def initialize(self):
         """
-        电子负载初始化：*RST 复位 → *CLS 清除状态 → SYST:REM 进入远程。
+        完整初始化：调用轻量化重置。
         """
-        self.send_command("*RST", check_esr=False)
-        time.sleep(0.5)
-        self.send_command("*CLS", check_esr=False)
-        self.send_command("SYST:REM", check_esr=False)
+        self._send_initial_commands()
 
     # ================================================================
     #  2. 负载 ON / OFF

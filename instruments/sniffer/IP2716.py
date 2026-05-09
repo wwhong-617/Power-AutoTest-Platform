@@ -115,6 +115,13 @@ class IP2716Sniffer(BaseSniffer):
     #  1. 初始化
     # ================================================================
 
+    def initialize(self) -> bool:
+        """
+        完整初始化：清缓冲区 + 固件自检。
+        """
+        self._send_initial_commands()
+        return self.fw_self_test()
+
     def fw_self_test(self) -> bool:
         """
         固件自检。

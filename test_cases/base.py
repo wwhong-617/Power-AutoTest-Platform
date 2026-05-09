@@ -63,6 +63,7 @@ class TestCase:
     measurements: Dict[str, float] = field(default_factory=dict)
     error_message: str = ""
     start_time: float = 0
+
     end_time: float = 0
 
     # 引擎引用（由 TestEngine 在执行前注入）
@@ -277,12 +278,21 @@ class TestCase:
         诱骗器协议设置。
 
         仅 charger 产品需要；adapter 直接返回 True。
+        从 PD 切换到其他协议时，先发一次普通模式重置，避免 PD 残留状态干扰。
         返回：锁定成功 True，失败 False。
         """
         product_type = self.params.get("product_type", "charger")
         if product_type != "charger" or sniffer is None:
             return True
+
+        # PD → 非PD：插入普通模式重置，避免 PD 残留干扰
+        last_proto = getattr(sniffer, '_last_proto', None)
+        if last_proto and last_proto.startswith("PD") and not proto_label.startswith("PD"):
+            sniffer.set_protocol("normal")
+            time.sleep(0.5)
+
         ok = bool(sniffer.set_protocol(proto_label, vout, iout))
+        sniffer._last_proto = proto_label
         time.sleep(0.5)   # 协议调压需要稳定时间
         return ok
 
@@ -612,9 +622,7 @@ class TestCase:
 
             if pwrmeter and getattr(pwrmeter, "_connected", False):
                 try:
-                    # 清除 ETS 瞬态抑制模式，防止峰值锁定导致读数异常
-                    if hasattr(pwrmeter, 'clear_ets'):
-                        pwrmeter.clear_ets()
+                    # 等待 1s 让 ETS 瞬态抑制自然释放，再测量
                     time.sleep(1)
                     measured_vout = pwrmeter.measure_output_voltage()
                 except Exception as e:

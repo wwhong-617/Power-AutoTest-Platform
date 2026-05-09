@@ -55,60 +55,41 @@ class IT8701P(BaseElectronicLoad):
         self._stop_flag = False
 
     # ---------------------------------------------------------------------
-    #  _send_initial_commands — 连接时发送初始化命令
+    #  _send_initial_commands — 轻量化初始化
     #
-    #  connect() -> InstrumentConnection.connect() -> _send_initial_commands()
-    #  完成仪器连接后的基础配置（remote / CLS / 瞬态关闭 / 输入关闭 / 通道选择）。
+    #  *RST + *CLS + SYST:REM。
+    #  connect() 时调用一次，确保仪器干净在线。
     # ---------------------------------------------------------------------
     def _send_initial_commands(self):
+        """
+        轻量化初始化：*RST + *CLS + SYST:REM。
+        """
         logger.info("[IT8701P] _send_initial_commands 开始")
-        try:
-            self.send_command(":SYST:REM", check_esr=False);   logger.info("[IT8701P] :SYST:REM OK")
-        except Exception as e:
-            logger.error(f"[IT8701P] :SYST:REM 失败: {e}"); raise
-        try:
-            self.send_command("*RST", check_esr=False);        logger.info("[IT8701P] *RST OK")
-        except Exception as e:
-            logger.error(f"[IT8701P] *RST 失败: {e}"); raise
+        self.send_command("*RST", check_esr=False)
         time.sleep(0.5)
-        try:
-            self.send_command("*CLS", check_esr=False);        logger.info("[IT8701P] *CLS OK")
-        except Exception as e:
-            logger.error(f"[IT8701P] *CLS 失败: {e}"); raise
-        try:
-            self.send_command("TRAN OFF", check_esr=False);    logger.info("[IT8701P] TRAN OFF OK")
-        except Exception as e:
-            logger.error(f"[IT8701P] TRAN OFF 失败: {e}"); raise
-        try:
-            self.send_command("INPut OFF", check_esr=False);  logger.info("[IT8701P] INPut OFF OK")
-        except Exception as e:
-            logger.error(f"[IT8701P] INPut OFF 失败: {e}"); raise
-        try:
-            self.select_channel(self._channel);                logger.info(f"[IT8701P] select_channel({self._channel}) OK")
-        except Exception as e:
-            logger.error(f"[IT8701P] select_channel 失败: {e}"); raise
+        self.send_command("*CLS", check_esr=False)
+        self.send_command(":SYST:REM", check_esr=False)
         logger.info("[IT8701P] _send_initial_commands 完成")
 
     # ---------------------------------------------------------------------
-    #  initialize — 轻量连接确认（base.py setup 调用）
+    #  initialize — 完整初始化
     #
-    #  connect() 已做过完整初始化，这里只确认仪器仍在线：
-    #  查询 *IDN?，成功返回 True；失败记录警告并返回 False。
-    #  不重发任何配置命令。
+    #  调用轻量化重置 + 瞬态关闭 + 输入关闭 + 通道选择。
     # ---------------------------------------------------------------------
     def initialize(self) -> bool:
+        """
+        完整初始化：调用轻量化重置 + TRAN OFF + INP OFF + 通道选择。
+        """
         if not self._connected:
-            logger.warning("[IT8701P] 未连接")
+            logger.warning("[IT8701P] initialize: 未连接，跳过")
             return False
-        try:
-            idn = self.query("*IDN?").strip()
-            if "ITECH" in idn or "SIMULATION" in idn:
-                return True
-            logger.warning(f"[IT8701P] 身份异常: {idn}")
-            return False
-        except Exception as e:
-            logger.warning(f"[IT8701P] initialize 查询失败: {e}")
-            return False
+        logger.info("[IT8701P] initialize: 开始完整初始化")
+        self._send_initial_commands()
+        self.send_command("TRAN OFF", check_esr=False)
+        self.send_command("INPut OFF", check_esr=False)
+        self.select_channel(self._channel)
+        logger.info("[IT8701P] initialize 完成")
+        return True
 
     def _validate_identity(self) -> bool:
         return any(x in self._idn
