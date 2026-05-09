@@ -1,5 +1,15 @@
+
+
+
 # -*- coding: utf-8 -*-
 """writer.py - 报告生成核心逻辑"""
+
+import os
+import json as _json
+import uuid
+import logging
+from datetime import datetime
+from collections import defaultdict
 
 from report._mappings import (
     _display_name, _cat, _cn, _get_cols,
