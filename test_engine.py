@@ -271,8 +271,8 @@ class TestEngine:
         # ============================================================
         # ⑤ 产品信息参数（输入范围 / 功率分段）
         # ============================================================
-        case.params.setdefault("input_voltage_min", float(product_info.get("input_voltage_min", product_info.get("input_voltage_lo", 90.0))))
-        case.params.setdefault("input_voltage_max", float(product_info.get("input_voltage_max", product_info.get("input_voltage_hi", 264.0))))
+        case.params["input_voltage_min"] = float(product_info.get("input_voltage_min", product_info.get("input_voltage_lo", 90.0)))
+        case.params["input_voltage_max"] = float(product_info.get("input_voltage_max", product_info.get("input_voltage_hi", 264.0)))
         case.params["power_segment"] = int(product_info.get("power_segment", 0) or 0)
         case.params["hv_power"]      = float(product_info.get("hv_power") or 0.0)
         case.params["lv_power"]      = float(product_info.get("lv_power") or 0.0)
