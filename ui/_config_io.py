@@ -154,8 +154,8 @@ def save_config(app, path: str):
     prod_info = {
         "product_name":           app._prod_name_var.get(),
         "product_type":          app._prod_type_vars.get("充电器") and "充电器" or "适配器",
-        "input_voltage_lo":      _safe_float(app._input_voltage_lo_var.get()),
-        "input_voltage_hi":      _safe_float(app._input_voltage_hi_var.get()),
+        "input_voltage_min":      _safe_float(app._input_voltage_lo_var.get()),
+        "input_voltage_max":      _safe_float(app._input_voltage_hi_var.get()),
         "output_voltage_min":   _safe_float(app._output_voltage_min_var.get()),
         "output_voltage_max":   _safe_float(app._output_voltage_max_var.get()),
         "output_power":          _safe_float(app._output_power_var.get()),
@@ -271,8 +271,8 @@ def load_config(app, path: str):
     # 产品信息
     pi = cfg.get("product_info", {})
     app._prod_name_var.set(pi.get("product_name", ""))
-    app._input_voltage_lo_var.set(pi.get("input_voltage_lo", ""))
-    app._input_voltage_hi_var.set(pi.get("input_voltage_hi", ""))
+    app._input_voltage_lo_var.set(pi.get("input_voltage_min", pi.get("input_voltage_lo", "")))
+    app._input_voltage_hi_var.set(pi.get("input_voltage_max", pi.get("input_voltage_hi", "")))
     # 输出电压：双字段，兼容旧配置只有单一 output_voltage
     app._output_voltage_min_var.set(pi.get("output_voltage_min", ""))
     app._output_voltage_max_var.set(

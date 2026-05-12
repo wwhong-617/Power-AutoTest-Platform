@@ -99,7 +99,7 @@ class InputDipTest(TestCase):
         self.osc_output_ch   = int(self.params.get("osc_output_ch",  2))
         self.dip_cycles      = int(self.params.get("dip_cycles",   10))
         self.settle_time     = float(self.params.get("settle_time", 2.0))
-        self.vin_lo_ui       = float(self.params.get("input_voltage_lo") or 90.0)
+        self.vin_lo_ui       = float(self.params.get("input_voltage_min") or 90.0)
         self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
 
     # ---------- execute ----------

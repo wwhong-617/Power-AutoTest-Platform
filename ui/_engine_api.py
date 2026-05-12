@@ -127,8 +127,8 @@ class EngineAPI:
         return {
             "product_info": {
                 "product_name": prod_name,
-                "input_voltage_lo": input_lo,
-                "input_voltage_hi": input_hi,
+                "input_voltage_min": input_lo,
+                "input_voltage_max": input_hi,
                 "output_voltage": output_voltage_max,
                 "output_voltage_min": output_voltage_min,
                 "output_voltage_max": output_voltage_max,

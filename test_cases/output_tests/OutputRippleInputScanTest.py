@@ -166,7 +166,9 @@ class OutputRippleInputScanTest(TestCase):
         # 获取 UI 配置的输入电压扫描下限
         product_info = self.params.get("product_info", {})
         vin_lo_ui = float(
-            product_info.get("input_voltage_lo")
+            product_info.get("input_voltage_min")
+            or self.params.get("input_voltage_min")
+            or product_info.get("input_voltage_lo")
             or self.params.get("input_voltage_lo")
             or 90.0
         )

@@ -28,11 +28,12 @@ OutputScpProtectTest - 输出短路保护测试
     2. 诱骗器协议配置（基类 _step_setup_sniffer）
     3. 示波器配置 SINGLE 触发（NORMAL 模式 / NEG 边沿）
     4. 电子负载设目标电流后短路（short_on）
-    5. 等待示波器触发完成，测量短路中电压
-    6. 短路解除（short_off），停止采集，保存波形
-    7. 等待 SHORT_OFF_HOLD，测量短路后电压
-    8. 恢复判定（latch/self，基准 = Vout_default）
-    9. 放电下电
+    5. 示波器 ARM → 等3s → 短路 → 等3s → 短路保持 SHORT_ON_HOLD=5s
+    6. 等待示波器触发完成，测量短路中电压
+    7. 短路解除（short_off），停止采集，保存波形
+    8. 等待 SHORT_OFF_HOLD，测量短路后电压
+    9. 恢复判定（latch/self，基准 = Vout_default）
+   10. 放电下电
 
   三个负载点之间独立上下电，锁死产品不会影响下一个负载点的测试。
 
@@ -265,15 +266,31 @@ class OutputScpProtectTest(TestCase):
             time.sleep(0.2)
             elapsed += 0.2
 
-        # --- 步骤5：短路的同时示波器进入ARM，确保不错过触发边沿 ---
-        # 【关键修复】：旧代码先ARM 3秒后再短路，DSOX ARM保活超时导致边沿丢失
-        # 新代码：短路施加与ARM几乎同时，hiccup模式也能可靠触发
-        if eload:
-            eload.short_on()
+        # --- 步骤5：示波器 ARM → 等5s → 短路 → 等5s → 短路保持5s ---
+        # ARM 后先等3秒，让示波器稳定在 ARM 状态
+        # 再施加短路（此时示波器已在ARM，hiccup边沿可靠触发）
         if osc:
             osc.set_single_trigger()
-            # DSOX firmware 从 ARM 命令到电路就绪需要一小段稳定时间
-            time.sleep(0.05)
+        elapsed = 0.0
+        while elapsed < 5.0:
+            if self.is_stop_requested():
+                return
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
+        # 短路施加
+        if eload:
+            eload.short_on()
+        elapsed = 0.0
+        while elapsed < 5.0:
+            if self.is_stop_requested():
+                return
+            while self.is_pause_requested() and not self.is_stop_requested():
+                time.sleep(0.2)
+            time.sleep(0.2)
+            elapsed += 0.2
+        # 短路保持 SHORT_ON_HOLD 秒
         if eload:
             elapsed = 0.0
             while elapsed < self.SHORT_ON_HOLD:

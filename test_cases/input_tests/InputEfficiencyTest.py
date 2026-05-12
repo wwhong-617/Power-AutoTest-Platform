@@ -118,8 +118,8 @@ class InputEfficiencyTest(TestCase):
             name="InputEfficiencyTest",
             instruments=["AC_SOURCE", "ELOAD", "SNIFFER", "POWER_METER"],
             params={
-                "input_voltage_lo": input_voltage_min,
-                "input_voltage_hi": input_voltage_max,
+                "input_voltage_min": input_voltage_min,
+                "input_voltage_max": input_voltage_max,
                 "product_type": product_type,
                 "test_conditions": test_conditions,
             },
@@ -140,8 +140,8 @@ class InputEfficiencyTest(TestCase):
         # 注意值由字典流到字典值，不是 tuple 是 dict
         self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
         self.warmup = float(self.params.get("warmup", 10.0))
-        self.input_voltage_lo = float(self.params.get("input_voltage_lo", 90.0))
-        self.input_voltage_hi = float(self.params.get("input_voltage_hi", 264.0))
+        self.input_voltage_lo = float(self.params.get("input_voltage_min", 90.0))
+        self.input_voltage_hi = float(self.params.get("input_voltage_max", 264.0))
         self.power_segment = int(self.params.get("power_segment", 0))
         self.hv_power = float(self.params.get("hv_power", 0.0))
         self.lv_power = float(self.params.get("lv_power", 0.0))

@@ -502,8 +502,12 @@ class ConfigUI(EngineAPI):
 
         # ---- 检查哪些测试用例被选中 ----
                 # ---- 输入电压列表（全量，筛选逻辑在各用例的 _filter_conditions_by_case 中处理）----
+        # 规则：始终保留 in_lo 和 in_hi；115V/230V 仅在其落在 [in_lo, in_hi] 范围内时加入
         in_voltages = [in_lo]
-        in_voltages.extend([115, 230])
+        if 115.0 >= in_lo and (in_hi is None or 115.0 <= in_hi):
+            in_voltages.append(115.0)
+        if 230.0 >= in_lo and (in_hi is None or 230.0 <= in_hi):
+            in_voltages.append(230.0)
         if in_hi and in_hi not in in_voltages:
             in_voltages.append(in_hi)
         in_voltages = sorted(set([v for v in in_voltages if v]))

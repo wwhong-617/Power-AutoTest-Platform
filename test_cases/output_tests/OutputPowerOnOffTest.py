@@ -275,10 +275,10 @@ class OutputPowerOnOffTest(TestCase):
             return
         osc.stop()   # 先停止示波器，确保从干净状态开始
         ch = self.osc_output_ch
-        # 刻度 = 开机电压 × 1.5（留 overshoot 余量）/ 4格
+        # 刻度 = 开机电压 × 1.5（留 overshoot 余量）/ 5格
         # round_voltage_scale 自动 round 到 DSOX 1-2-5 档位表
         v_peak = vout_measured * 1.5
-        scale = osc.round_voltage_scale(v_peak / 4.0)
+        scale = osc.round_voltage_scale(v_peak / 5.0)
         # 偏移：波形底部对准屏幕第2格（0V在第2格，Vout在第2+v_peak/scale格）
         offset = vout_measured / 2.0
         osc.set_voltage_scale(ch, scale)
@@ -301,9 +301,9 @@ class OutputPowerOnOffTest(TestCase):
             return
         osc.stop()   # 先停止示波器，确保从干净状态开始
         ch = self.osc_output_ch
-        # 刻度 = 目标电压 × 1.5（留 undershoot 余量）/ 4格
+        # 刻度 = 目标电压 × 1.5（留 undershoot 余量）/ 5格
         v_peak = vout_target * 1.5
-        scale = osc.round_voltage_scale(v_peak / 4.0)
+        scale = osc.round_voltage_scale(v_peak / 5.0)
         offset = vout_target / 2.0
         osc.set_voltage_scale(ch, scale)
         osc.set_channel_offset(ch, offset)
