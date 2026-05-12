@@ -1,7 +1,7 @@
 # 测试平台架构与设计规则
 
 > 本文档是测试平台架构的权威参考。新增功能或修改现有代码时，请务必遵循本文档规则。
-> 最后更新：2026-05-09
+> 最后更新：2026-05-12
 
 ---
 
@@ -461,4 +461,161 @@ case.params["my_param"] = self.config.get("product_info", {}).get("my_param", de
 
 ```python
 self.my_param = self.params.get("my_param", default_value)
+```
+
+---
+
+## 十二、Bug 问题记录与设计规则（2026-05-11/12 总结）
+
+本节记录已发生的真实 Bug 及从中提炼的设计规则，所有新增代码必须避免重蹈覆辙。
+
+---
+
+### 12.1 DSOX4024A logger 局部变量 Bug
+
+**文件**：`instruments/oscilloscope/DSOX4024A.py`
+
+**现象**：OutputPowerOnOffTest 测试时，波形截图失败，控制台输出：
+```
+[POOT] 波形截图异常: name 'logger' is not defined
+```
+
+**根因**：`__init__` 方法中定义了局部变量 `logger`：
+```python
+def __init__(self, ...):
+    import logging
+    logger = logging.getLogger("PowerAutoTest")  # ❌ 局部变量
+    logger.info(...)
+```
+`save_screenshot()`、`_acquire_waveform()` 等实例方法中直接使用 `logger.warning(...)`，但 `logger` 是局部变量，实例方法无法访问，抛出 `NameError`。
+
+**修复**：将 `logger` 改为 `self.logger` 实例变量。
+
+**规则 4：仪器驱动中的 logger 必须定义为 `self.logger`**
+
+```python
+def __init__(self, ...):
+    import logging
+    self.logger = logging.getLogger("PowerAutoTest")  # ✅ 实例变量
+```
+
+所有后续引用必须用 `self.logger`，不得使用局部 `logger` 变量。
+
+---
+
+### 12.2 OutputScpProtectTest 示波器触发时序 Bug
+
+**文件**：`test_cases/protection_tests/OutputScpProtectTest.py`
+
+**现象**：264V/PD-PDO5/20V/3.25A 条件下，100% 和 0% 负载点触发超时（10.2s），50% 负载点正常（0.00s）。
+
+**根因**：触发时序设计缺陷。旧代码流程：
+
+```
+步骤3: _osc_arm_short_trigger()  ← 配置示波器（NORMAL/NEG/6V），但还没ARM
+步骤4: eload.set_mode_cc() + input_on()  ← 电子负载上电
+        ↓ 等待1s settling
+步骤5: osc.set_single_trigger()   ← 【太晚！】示波器才进入ARM
+        ↓ 等待3s busy-wait（这里 DSOX ARM 保活超时！）
+步骤6: eload.short_on()          ← 【短路才施加，错过边沿】
+        ↓ 等待5s (SHORT_ON_HOLD)
+步骤7: _osc_wait_trigger_done()  ← 开始轮询，短路已施加8秒了
+```
+
+关键问题：示波器 ARM 之后，空等了 3 秒才施加短路。DSOX4024A 的 SINGLE 模式触发电路在 ARM 状态下等待约 3 秒后可能"倦怠"（保活超时），导致后续的 NEG 边沿触发事件被错过。
+
+100%/0% 负载时 DUT 进入 hiccup（打嗝）模式，输出电压在 0V 附近周期性振荡，示波器触发状态机行为异常；而 50% 负载时 DUT 输出相对稳定，NEG 边沿干净，触发可靠。
+
+**修复**：短路与 ARM 同时发生：
+
+```python
+# --- 步骤5：短路的同时示波器进入ARM，确保不错过触发边沿 ---
+if eload:
+    eload.short_on()       # 短路先施加
+if osc:
+    osc.set_single_trigger()  # 几乎同时 ARM
+    time.sleep(0.05)          # DSOX firmware 稳定时间
+if eload:
+    # 等待 SHORT_ON_HOLD...
+```
+
+**规则 5：示波器 SINGLE 触发必须在动作事件发生的同时或之前 ARM，不得有预等待**
+
+在需要捕捉边沿瞬态的测试中（如短路、开关机），触发 ARM 与被测动作必须"原子化"：
+- ✅ `eload.short_on()` → `osc.set_single_trigger()` → `sleep(0.05)` → 继续
+- ❌ `osc.set_single_trigger()` → `sleep(3.0)` → `eload.short_on()` （中间空窗太长）
+
+**规则 6：触发等待轮询期间不得有阻塞性 sleep，轮询与动作不能分离**
+
+---
+
+### 12.3 AN87330 功率计 git conflict markers 问题
+
+**文件**：`instruments/power_meter/AN87330.py`
+
+**现象**：文件包含约 58 处嵌套 git conflict markers（`<<<<<<< HEAD`、`=======`、`>>>>>>>`），导致 Python 无法解析。
+
+**根因**：多人协作时 git 合并冲突未完全解决，conflict markers 残留在源代码中。
+
+**修复**：手动删除所有 conflict markers，保留 HEAD 版本代码。
+
+**规则 7：git merge/conflict 后必须确保文件可解析（`python -m py_compile`），方可提交**
+
+```bash
+# 提交前必做检查
+python -m py_compile your_file.py
+```
+
+---
+
+### 12.4 IT7821E AC 源 set_voltage 阻塞问题
+
+**文件**：`instruments/ac_source/IT7821E.py`
+
+**现象**：`ac.set_voltage(100)` 命令执行时阻塞 8 分钟。
+
+**根因**：`pyvisa/pyvisa-py` 的 USB 通信驱动在 Windows 上有 stdin 读取问题，`set_voltage` 底层可能触发了某种读等待导致永久阻塞。
+
+**规则 8：所有仪器通信调用必须设置 timeout，不得依赖系统默认超时**
+
+```python
+# 所有仪器 open 后必须设置 timeout
+resource.timeout = 5000  # ms
+```
+
+**规则 9：含有阻塞 I/O 的仪器调用不得在主测试线程中直接执行，如需执行必须加超时保护**
+
+---
+
+### 12.5 OutputPowerOnOffTest 示波器 ROLL 模式遗留问题
+
+**文件**：`test_cases/output_tests/OutputPowerOnOffTest.py`
+
+**现象**：从 InputEfficiencyTest 切换到 OutputPowerOnOffTest 时，抓不到示波器波形。
+
+**根因**：`InputEfficiencyTest.teardown()` 未正确恢复示波器状态，导致切换到下一个测试时示波器仍处于 ROLL 模式。ROLL 模式下修改时基有延迟，且 SINGLE 触发行为异常。
+
+**规则 10：每个测试的 `setup()` 必须显式将示波器切回 MAIN 模式并重新配置**
+
+```python
+def setup(self, instruments):
+    osc = instruments.get("OSC")
+    if osc:
+        osc.set_timebase_mode("MAIN")      # ✅ 强制切回 MAIN
+        osc.set_timebase(self.TIME_BASE_S)  # ✅ 重新配时基
+        # ... 其他通道配置
+```
+
+**规则 11：`teardown()` 必须恢复仪器到已知默认状态，不得遗留特殊配置**
+
+```python
+def teardown(self, instruments):
+    osc = instruments.get("OSC")
+    if osc:
+        try:
+            for ch in range(1, 5):
+                osc.set_channel_off(ch)     # ✅ 关闭所有通道
+            osc.clear_measurements()        # ✅ 清除测量项
+        except Exception:
+            pass
 ```
