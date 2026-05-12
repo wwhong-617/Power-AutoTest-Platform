@@ -126,15 +126,15 @@ class TestCase:
     # 通用步骤方法（所有输入/输出测试共用）
     # =====================================================================
 
-    def _step_discharge(self, ac, elod, current=1.0, duration=1.0):
+    def _step_discharge(self, ac, elod, current=3.0, duration=2.0):
         """
         统一放电流程：AC OFF → 电子负载 CC 恒流放电 → OFF。
 
         Args:
             ac:       AC 源实例
             elod:     电子负载实例
-            current:  放电电流（A），默认 1.0A
-            duration: 放电持续时间（秒），默认 1.0s
+            current:  放电电流（A），默认 3.0A
+            duration: 放电持续时间（秒），默认 2.0s
         """
         if ac and getattr(ac, "_connected", False):
             try:
@@ -559,6 +559,7 @@ class TestCase:
     ) -> Tuple[bool, float, str]:
         """
         开机自检（支持三次尝试，最多两次清除故障重试）。
+        实际：第1次失败 → 清除重试(第2次) → 再清除重试(第3次) → 仍失败则返回 False。
 
         参数可传入 vin/freq 覆盖 self.params（用于测试条件上电）。
         逻辑：
@@ -622,8 +623,8 @@ class TestCase:
 
             if pwrmeter and getattr(pwrmeter, "_connected", False):
                 try:
-                    # 等待 1s 让 ETS 瞬态抑制自然释放，再测量
-                    time.sleep(1)
+                    # 等待 3s 让 ETS 瞬态抑制自然释放，再测量（开机延迟考虑）
+                    time.sleep(3)
                     measured_vout = pwrmeter.measure_output_voltage()
                 except Exception as e:
                     logger.warning(f"[StartupCheck] 功率计读取失败: {e}")
@@ -662,41 +663,15 @@ class TestCase:
             logger.info(f"[StartupCheck] 第2次通过 | 实测 {measured_vout:.3f}V")
             return True, measured_vout, ""
 
-        # ---- 第3次重试，清除后再试 ----
-        logger.warning(f"[StartupCheck] 第2次失败: {reason}，再次清除保护...")
+        # ---- 第3次重试（最后一次） ----
+        logger.warning(f"[StartupCheck] 第2次失败: {reason}，清除故障最后一次重试...")
         _clear_and_retry()
         ok, measured_vout, reason = _do_check()
         if ok:
             logger.info(f"[StartupCheck] 第3次通过 | 实测 {measured_vout:.3f}V")
             return True, measured_vout, ""
 
-        # ---- 第4次重试，清除后再试 ----
-        logger.warning(f"[StartupCheck] 第3次失败: {reason}，再次清除保护...")
-        _clear_and_retry()
-        ok, measured_vout, reason = _do_check()
-        if ok:
-            logger.info(f"[StartupCheck] 第4次通过 | 实测 {measured_vout:.3f}V")
-            return True, measured_vout, ""
-
-        # ---- 第5次重试，清除后再试 ----
-        logger.warning(f"[StartupCheck] 第4次失败: {reason}，再次清除保护...")
-        _clear_and_retry()
-        ok, measured_vout, reason = _do_check()
-        if ok:
-            logger.info(f"[StartupCheck] 第5次通过 | 实测 {measured_vout:.3f}V")
-            return True, measured_vout, ""
-
-        logger.warning(f"[StartupCheck] 第5次失败: {reason}")
-        
-        # ---- 第6次重试，清除后再试 ----
-        logger.warning(f"[StartupCheck] 第5次失败: {reason}，再次清除保护...")
-        _clear_and_retry()
-        ok, measured_vout, reason = _do_check()
-        if ok:
-            logger.info(f"[StartupCheck] 第6次通过 | 实测 {measured_vout:.3f}V")
-            return True, measured_vout, ""
-
-        logger.warning(f"[StartupCheck] 第6次失败: {reason}")
+        logger.warning(f"[StartupCheck] 第3次失败: {reason}")
         return False, measured_vout, reason
 
     def run(self, instruments: Dict[str, Any]) -> "TestCase":

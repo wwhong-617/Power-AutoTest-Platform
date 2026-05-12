@@ -104,6 +104,9 @@ class OutputRiseTimeTest(TestCase):
             warning("[RIT] 示波器未连接，跳过公共配置")
             return
 
+        # 先切回 MAIN 模式（上一个测试可能是 ROLL 模式，ROLL 下改时基有延迟）
+        osc.set_timebase_mode("MAIN")
+
         # 时基（默认固定）
         osc.set_timebase(self.TIME_BASE_S)
 
@@ -381,6 +384,22 @@ class OutputRiseTimeTest(TestCase):
             # 内部字段
             "_pass":         conclusion == "PASS",
         }
+
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
 
     # ---------- verify ----------
     def verify(self) -> bool:

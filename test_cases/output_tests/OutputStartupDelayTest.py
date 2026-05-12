@@ -108,6 +108,9 @@ class OutputStartupDelayTest(TestCase):
             warning("[SSD] 示波器未连接，跳过公共配置")
             return
 
+        # 先切回 MAIN 模式（上一个测试可能是 ROLL 模式，ROLL 下改时基有延迟）
+        osc.set_timebase_mode("MAIN")
+
         # 时基（默认固定）
         osc.set_timebase(self.TIME_BASE_S)
 
@@ -182,7 +185,7 @@ class OutputStartupDelayTest(TestCase):
             # --- 步骤4：武装 SINGLE 触发 → 开机自检上电 → 等待触发 ---
             if osc:
                 osc.set_single_trigger()
-                time.sleep(1.0)
+                time.sleep(10.0)
 
             cold_ok, _, cold_fail = self.startup_self_check(
                 instruments, vin=float(vin_cfg), freq=float(freq_cfg)
@@ -196,8 +199,8 @@ class OutputStartupDelayTest(TestCase):
                 )
                 if not triggered:
                     osc.stop()
-            # 开机延迟时间时基比较大，示波器波形保存需要时间，增加2s等待时间
-            time.sleep(2.0)
+            # 开机延迟时间时基比较大，示波器波形保存需要时间，增加等待时间
+            time.sleep(10.0)
 
             # --- 步骤5：采集双通道波形 → 计算延迟 ---
             delay_ms, waveform = self._measure_delay(
@@ -469,6 +472,22 @@ class OutputStartupDelayTest(TestCase):
             # 内部字段
             "_pass":           passed,
         }
+
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
 
     # ---------- verify ----------
     def verify(self) -> bool:

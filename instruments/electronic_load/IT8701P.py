@@ -183,7 +183,8 @@ class IT8701P(BaseElectronicLoad):
 
     def set_mode_cc(self, current: float, slew_rate: float = None):
         """
-        设置恒流模式 (CC)。
+        设置恒流模式 (CC)，包含完整初始化（通道/模式/保护/斜率）。
+        适用于扫描前一次性设置，或更换电流值时连同模式参数一起更新。
 
         Args:
             current:    目标电流（A）
@@ -197,6 +198,16 @@ class IT8701P(BaseElectronicLoad):
         if slew_rate is not None and slew_rate > 0:
             self.send_command(f"CURR:SLEW:POSitive {slew_rate / 1_000_000:.6f}")
         self._current_mode = LoadMode.CC
+
+    def set_load_current(self, current: float):
+        """
+        仅更新负载电流值，不重新配置模式/通道/保护。
+        用于扫描过程中快速更新电流（每点调用），避免冗余命令。
+
+        Args:
+            current: 目标电流（A）
+        """
+        self.send_command(f"CURR {current}", check_esr=False)
 
     def set_mode_cv(self, voltage: float):
         """设置恒压模式 (CV)"""

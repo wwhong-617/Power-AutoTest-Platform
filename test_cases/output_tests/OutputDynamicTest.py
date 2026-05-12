@@ -459,7 +459,7 @@ class OutputDynamicTest(TestCase):
 
     # ---------- teardown ----------
     def teardown(self, instruments: Dict[str, Any]):
-        """放电下电，恢复示波器时基模式。"""
+        """放电下电，清理示波器通道和测量项，恢复普通模式。"""
         self._step_discharge(
             instruments.get("AC_SOURCE"),
             instruments.get("ELOAD"),
@@ -467,6 +467,9 @@ class OutputDynamicTest(TestCase):
         osc = instruments.get("OSC")
         if osc:
             try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
                 osc.set_timebase_mode("MAIN")
             except Exception:
                 pass

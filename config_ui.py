@@ -147,7 +147,8 @@ class ConfigUI(EngineAPI):
         thread = threading.Thread(target=self._scan_bg, daemon=True)
         thread.start()
     def _scan_bg(self):
-        from ui._scan import query_usb_idn, get_usb_visa, get_com_ports, match_idn, ack_verify_sniffer
+        from ui._scan import (query_usb_idn, get_usb_visa, get_com_ports,
+                               match_idn, ack_verify_sniffer, scan_an87330)
         import serial
         try:
             checked = {k for k, v in self._device_check_vars.items() if v.get() == 1}
@@ -210,6 +211,26 @@ class ConfigUI(EngineAPI):
                     _log("INFO", f"  [诱骗器] 已在USB扫描中找到，跳过COM")
                 else:
                     _log("INFO", f"  [诱骗器] 未勾选，跳过")
+
+            # ③ COM口扫描：功率计（AN87330 使用 Ainuo 协议，RS232）
+            if "power_meter" in checked and "power_meter" not in scan_results:
+                # 只扫描 COM 口
+                used_addrs = {v['addr'] for v in scan_results.values() if v.get('addr')}
+                avail_coms = [c for c in all_coms if c not in used_addrs]
+                _log("INFO", f"\n[功率计COM扫描] 尝试端口: {', '.join(avail_coms) or '无'}")
+                for port in avail_coms:
+                    if "power_meter" in scan_results:
+                        break
+                    if scan_an87330(port):
+                        scan_results['power_meter'] = {'comm': 'COM', 'addr': port, 'model': 'AN87330'}
+                        _log("INFO", f"    {port}: AN87330 识别成功 -> [power_meter] 已填入")
+                    else:
+                        _log("INFO", f"    {port}: (非AN87330)")
+            else:
+                if "power_meter" in scan_results:
+                    _log("INFO", f"  [功率计] 已在USB扫描中找到，跳过COM")
+                else:
+                    _log("INFO", f"  [功率计] 未勾选，跳过COM")
 
             # 扫描完成：写入UI（异步，等UI更新完再提示）
             self._after(lambda results=scan_results: self._apply_all_scan_results(results))

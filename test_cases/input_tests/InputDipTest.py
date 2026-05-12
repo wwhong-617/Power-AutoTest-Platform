@@ -409,7 +409,7 @@ class InputDipTest(TestCase):
         return bool(self.sub_results) and all(r["overall_pass"] for r in self.sub_results)
 
     def teardown(self, instruments: Dict[str, Any]):
-        """关闭仪器输出，恢复示波器普通模式。"""
+        """关闭仪器输出，清理示波器通道和测量项，恢复普通模式。"""
         self._step_discharge(
             instruments.get("AC_SOURCE"),
             instruments.get("ELOAD"),
@@ -417,6 +417,9 @@ class InputDipTest(TestCase):
         osc = instruments.get("OSC")
         if osc:
             try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
                 osc.set_timebase_mode("MAIN")
             except Exception:
                 pass

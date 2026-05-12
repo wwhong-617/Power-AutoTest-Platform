@@ -108,6 +108,7 @@ class PDProtocolTest(TestCase):
         if sniffer:
             # 恢复默认状态
             pass
+        super().teardown(instruments)
 
     def to_dict(self) -> dict:
         d = super().to_dict()

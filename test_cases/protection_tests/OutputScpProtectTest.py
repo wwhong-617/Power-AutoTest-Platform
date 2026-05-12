@@ -265,19 +265,16 @@ class OutputScpProtectTest(TestCase):
             time.sleep(0.2)
             elapsed += 0.2
 
-        # 示波器等待 SINGLE 触发，电子负载随后短路
-        if osc:
-            osc.set_single_trigger()
-            elapsed = 0.0
-            while elapsed < 3.0:
-                if self.is_stop_requested():
-                    return
-                while self.is_pause_requested() and not self.is_stop_requested():
-                    time.sleep(0.2)
-                time.sleep(0.2)
-                elapsed += 0.2
+        # --- 步骤5：短路的同时示波器进入ARM，确保不错过触发边沿 ---
+        # 【关键修复】：旧代码先ARM 3秒后再短路，DSOX ARM保活超时导致边沿丢失
+        # 新代码：短路施加与ARM几乎同时，hiccup模式也能可靠触发
         if eload:
             eload.short_on()
+        if osc:
+            osc.set_single_trigger()
+            # DSOX firmware 从 ARM 命令到电路就绪需要一小段稳定时间
+            time.sleep(0.05)
+        if eload:
             elapsed = 0.0
             while elapsed < self.SHORT_ON_HOLD:
                 if self.is_stop_requested():
@@ -515,6 +512,22 @@ class OutputScpProtectTest(TestCase):
             "overall_pass":      test_pass,
             "fail_reason":      fail_reason,
         })
+
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
 
     # ---------- verify ----------
     def verify(self) -> bool:

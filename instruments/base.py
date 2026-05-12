@@ -122,6 +122,14 @@ class BaseInstrument(ABC):
             return True
 
         try:
+            # ── 0. 清理上次失败遗留的资源 ─────────────────────────
+            if self._resource is not None:
+                try:
+                    self._resource.close()
+                except Exception:
+                    pass
+                self._resource = None
+
             # ── 1. 打开资源 ──────────────────────────────────
             self._report(InstrumentConnectionState.OPENING,
                          f"打开 {self._address}")
@@ -205,13 +213,13 @@ class BaseInstrument(ABC):
 
     # ---------------------- 公共发送接口 ----------------------
 
-    def send_command(self, cmd: str, check_esr: bool = True):
+    def send_command(self, cmd: str, check_esr: bool = False):
         """
         发送 SCPI 命令。
 
         Args:
             cmd:       SCPI 命令字符串
-            check_esr: 是否检查状态寄存器（ESR）
+            check_esr: 是否检查状态寄存器（ESR）。默认 False（成熟 SCPI 设备无需每次校验）。
         """
         if self._resource is None:
             raise InstrumentError("Not connected")

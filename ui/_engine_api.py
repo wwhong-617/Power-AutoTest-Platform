@@ -200,16 +200,30 @@ class EngineAPI:
         test_params   = cfg.get("test_params", {})
         self._append_run_log("[设备初始化] 写入通道角色...")
 
-        # 写入 WT333E 功率计通道角色
+        # 动态检测功率计（支持 WT333E / AN87330 等多种型号）
         pwrmeter = None
         if hasattr(self, '_instrument_manager') and self._instrument_manager:
             mgr_ch_cfg = {**test_settings, **test_params}
             self._instrument_manager.apply_channel_roles(mgr_ch_cfg)
-            pwrmeter = self._instrument_manager._instruments.get("WT333E") or self._instrument_manager._instruments.get("POWER_METER")
-        if pwrmeter and hasattr(pwrmeter, '_input_ch'):
-            self._append_run_log("[设备初始化] WT333E 通道: 输入=CH%d 输出=CH%d" % (pwrmeter._input_ch+1, pwrmeter._output_ch+1))
+            # 优先取 POWER_METER key，fallback 到任意已连接的功率计
+            pwrmeter = self._instrument_manager._instruments.get("POWER_METER")
+            if not pwrmeter:
+                for k, inst in self._instrument_manager._instruments.items():
+                    if "power" in k.lower() or hasattr(inst, "measure_input_power"):
+                        pwrmeter = inst
+                        break
+
+        if pwrmeter:
+            model_name = getattr(pwrmeter, '_model', 'POWER_METER')
+            if hasattr(pwrmeter, '_input_ch'):
+                # WT333E 等双通道功率计：有独立通道角色
+                self._append_run_log("[设备初始化] %s 通道: 输入=CH%d 输出=CH%d" % (
+                    model_name, pwrmeter._input_ch + 1, pwrmeter._output_ch + 1))
+            else:
+                # AN87330 等全局量程功率计：无通道角色概念
+                self._append_run_log("[设备初始化] %s 已连接（全局量程）" % model_name)
         else:
-            self._append_run_log("[设备初始化] WT333E 未连接，跳过")
+            self._append_run_log("[设备初始化] 功率计未连接，跳过")
 
         # 写入示波器通道角色（osc._osc_ch_config 供 engine 层 initialize_all_instruments() 使用）
         osc = self._instruments.get("OSC")

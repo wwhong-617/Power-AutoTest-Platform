@@ -45,6 +45,7 @@ class OVPTest(TestCase):
         )
 
     def setup(self, instruments: Dict[str, Any]):
+        super().setup(instruments)
         ac = instruments.get("AC_SOURCE")
         if ac:
             ac.set_voltage(self.params["input_voltage"])

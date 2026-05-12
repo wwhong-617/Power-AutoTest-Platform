@@ -14,7 +14,7 @@ DEVICE_DEFS = {
     "ac_source": {
         "label": "交流源 (AC Source)",
         "comm_options": ["USB", "LAN"],
-        "model_options": ["IT7321", "IT7322"],
+        "model_options": ["IT7321", "IT7322", "IT7821E"],
     },
     "electronic_load": {
         "label": "电子负载 (Electronic Load)",
@@ -28,8 +28,8 @@ DEVICE_DEFS = {
     },
     "power_meter": {
         "label": "功率计 (Power Meter)",
-        "comm_options": ["USB"],
-        "model_options": ["WT333E", "WT322E"],
+        "comm_options": ["USB", "COM"],
+        "model_options": ["WT333E", "WT322E", "AN87330"],
     },
     "sniffer": {
         "label": "协议诱骗器 (Sniffer)",

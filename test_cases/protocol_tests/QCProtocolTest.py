@@ -76,7 +76,7 @@ class QCProtocolTest(TestCase):
         return all(r["pass"] for r in self.sub_results)
 
     def teardown(self, instruments: Dict[str, Any]):
-        pass
+        super().teardown(instruments)
 
     def to_dict(self) -> dict:
         d = super().to_dict()

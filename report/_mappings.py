@@ -24,16 +24,19 @@ CASE_NAME_CN_MAP = {en: _display_name(en) for en in CASE_CN_NAMES}
 _CASE_CN_TO_CATEGORY = {
     "输入":    "输入测试",
     "输出":    "输出测试",
-    "过流":    "保护功能测试",
-    "过压":    "保护功能测试",
-    "欠压":    "保护功能测试",
-    "过温":    "保护功能测试",
-    "短路":    "保护功能测试",
     "协议":    "协议测试",
 }
 
 def _cat(cn: str) -> str:
-    """根据中文名推断分类"""
+    """
+    根据中文名推断分类。
+    先检查是否为保护类（关键词在任意位置），再按前缀匹配输入/输出/协议。
+    """
+    # 保护类关键词：可能在名字中间，不只是前缀
+    for kw in ["过流", "过压", "欠压", "过温", "短路"]:
+        if kw in cn:
+            return "保护功能测试"
+    # 输入/输出/协议：按前缀匹配
     for prefix, category in _CASE_CN_TO_CATEGORY.items():
         if cn.startswith(prefix):
             return category

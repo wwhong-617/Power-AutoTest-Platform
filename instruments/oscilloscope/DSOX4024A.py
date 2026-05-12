@@ -143,8 +143,8 @@ class DSOX4024A(BaseOscilloscope):
         if dynamic_ch is not None:
             self._dynamic_ch = self._parse_ch(dynamic_ch)
         import logging
-        logger = logging.getLogger("PowerAutoTest")
-        logger.info(f"[DSOX4024A] 通道角色: 输入=CH{self._input_ch} 输出=CH{self._output_ch} 动态=CH{self._dynamic_ch}")
+        self.logger = logging.getLogger("PowerAutoTest")
+        self.logger.info(f"[DSOX4024A] 通道角色: 输入=CH{self._input_ch} 输出=CH{self._output_ch} 动态=CH{self._dynamic_ch}")
 
     def _parse_ch(self, ch: str) -> int:
         """将 "CH2" → 2, "CH4" → 4"""
@@ -1268,7 +1268,7 @@ class DSOX4024A(BaseOscilloscope):
             return x_data, y_data
 
         except Exception as e:
-            logger.warning(f"[DSOX4024A] Waveform acquire failed: {e}")
+            self.logger.warning(f"[DSOX4024A] Waveform acquire failed: {e}")
             return np.array([]), np.array([])
 
     def save_screenshot(self, filepath: str) -> str:
@@ -1299,7 +1299,7 @@ class DSOX4024A(BaseOscilloscope):
             pos = raw.find(png_sig)
 
             if pos < 0:
-                logger.warning(f"[DSOX4024A] save_screenshot: PNG signature not found")
+                self.logger.warning(f"[DSOX4024A] save_screenshot: PNG signature not found")
                 return None
 
             png_data = raw[pos:]
@@ -1314,7 +1314,7 @@ class DSOX4024A(BaseOscilloscope):
             return filepath
 
         except Exception as e:
-            logger.warning(f"[DSOX4024A] save_screenshot failed: {e}")
+            self.logger.warning(f"[DSOX4024A] save_screenshot failed: {e}")
             return None
 
     def save_screenshot_with_measurements(self, channel: int, filepath: str) -> str:
@@ -1395,5 +1395,5 @@ class DSOX4024A(BaseOscilloscope):
             return filepath
 
         except Exception as e:
-            logger.warning(f"[DSOX4024A] save_screenshot_with_measurements failed: {e}")
+            self.logger.warning(f"[DSOX4024A] save_screenshot_with_measurements failed: {e}")
             return ""

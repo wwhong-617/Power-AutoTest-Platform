@@ -288,8 +288,8 @@ class OutputRippleInputScanTest(TestCase):
         def set_vin(vin: float) -> float:
             freq = 50.0 if vin >= 180.0 else 60.0
             if ac:
-                ac.set_voltage(vin)
-                ac.set_frequency(freq)
+                ac.set_voltage_nowait(vin)
+                ac.set_frequency_nowait(freq)
             return freq
 
         hv_crossed, lv_crossed = False, False
@@ -307,7 +307,7 @@ class OutputRippleInputScanTest(TestCase):
                     and not hv_crossed
                     and prev_iout is not None):
                 for s in range(1, 10):
-                    eload.set_mode_cc(prev_iout + (i_target - prev_iout) * s / 10.0)
+                    eload.set_load_current(prev_iout + (i_target - prev_iout) * s / 10.0)
                     time.sleep(2)
                 hv_crossed = True
             # LV→HV 上行跨越 180V
@@ -316,11 +316,11 @@ class OutputRippleInputScanTest(TestCase):
                     and not lv_crossed
                     and prev_iout is not None):
                 for s in range(1, 10):
-                    eload.set_mode_cc(prev_iout + (i_target - prev_iout) * s / 10.0)
+                    eload.set_load_current(prev_iout + (i_target - prev_iout) * s / 10.0)
                     time.sleep(2)
                 lv_crossed = True
             else:
-                eload.set_mode_cc(i_target)
+                eload.set_load_current(i_target)
 
             prev_iout = i_target
             prev_vin  = vin
@@ -446,6 +446,22 @@ class OutputRippleInputScanTest(TestCase):
             return osc.save_screenshot(os.path.join(base_dir, fname))
         except Exception:
             return None
+
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
 
     # ---------- verify ----------
     def verify(self) -> bool:

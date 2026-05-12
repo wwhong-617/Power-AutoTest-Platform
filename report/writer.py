@@ -5,6 +5,9 @@
 """writer.py - 报告生成核心逻辑"""
 
 import os
+# 项目根目录（自适应：无论安装到哪，都指向包含 report/ 与 test_cases/ 的项目根）
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 import json as _json
 import uuid
 import logging
@@ -272,9 +275,8 @@ def _get_case_cols(case_name: str):
 
         # ---- 方案：直接读源码文件，正则提取 COLS ----
         import os, re
-        # 项目根目录（已知固定路径）
-        _prj_root = r'D:\injoinic--job\自动化测试平台开发\自动化测试平台'
-        py_file = os.path.join(_prj_root, *parts) + ".py"
+        # 项目根目录（自适应）
+        py_file = os.path.join(_PROJECT_ROOT, *parts) + ".py"
         if os.path.isfile(py_file):
             with open(py_file, encoding="utf-8") as fh:
                 src = fh.read()

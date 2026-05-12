@@ -116,6 +116,9 @@ class OutputPowerOnOffTest(TestCase):
             warning("[POOT] 示波器未连接，跳过公共配置")
             return
 
+        # 先切回 MAIN 模式（上一个测试可能是 ROLL 模式，ROLL 下改时基有延迟）
+        osc.set_timebase_mode("MAIN")
+
         # 时基（全局固定）
         osc.set_timebase(self.TIME_BASE_S)
 
@@ -190,11 +193,13 @@ class OutputPowerOnOffTest(TestCase):
                 ac.output_off()
             self._step_discharge(ac, eload)
 
-            # --- 步骤4：武装示波器 SINGLE 触发 → 开机自检上电 → 等待触发 ---
+            # --- 步骤4：放电完毕，武装示波器 SINGLE 触发 → 立即冷启动上电 ---
             if osc:
                 osc.set_single_trigger()
-                time.sleep(1.0)
+                # 等待 50ms 让示波器真正进入 ARM 状态（确保触发电路已就绪）
+                time.sleep(0.05)
 
+            # 立即上电，不要等！等太久会让触发点偏离开机瞬间
             cold_ok, _, cold_fail = self.startup_self_check(
                 instruments, vin=float(vin_cfg), freq=float(freq_cfg)
             )
@@ -226,7 +231,7 @@ class OutputPowerOnOffTest(TestCase):
             # --- 步骤8：武装示波器 SINGLE 触发 → AC OFF → 等待触发 ---
             if osc:
                 osc.set_single_trigger()
-                time.sleep(2.0)
+                time.sleep(3.0)
             if ac:
                 ac.output_off()
 
@@ -268,6 +273,7 @@ class OutputPowerOnOffTest(TestCase):
         """
         if osc is None:
             return
+        osc.stop()   # 先停止示波器，确保从干净状态开始
         ch = self.osc_output_ch
         # 刻度 = 开机电压 × 1.5（留 overshoot 余量）/ 4格
         # round_voltage_scale 自动 round 到 DSOX 1-2-5 档位表
@@ -293,6 +299,7 @@ class OutputPowerOnOffTest(TestCase):
         """
         if osc is None:
             return
+        osc.stop()   # 先停止示波器，确保从干净状态开始
         ch = self.osc_output_ch
         # 刻度 = 目标电压 × 1.5（留 undershoot 余量）/ 4格
         v_peak = vout_target * 1.5
@@ -482,6 +489,22 @@ class OutputPowerOnOffTest(TestCase):
             "overall_pass":  overall_pass,
             "skipped":       skipped,
         }
+
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
 
     # ---------- verify ----------
     def verify(self) -> bool:

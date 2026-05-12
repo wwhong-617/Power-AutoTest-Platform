@@ -98,10 +98,16 @@ IDN_MAP = [
     ("DSOX4054A",   "oscilloscope",    "DSOX4054A"),
     ("WT333E",      "power_meter",     "WT333E"),
     ("WT322E",      "power_meter",     "WT322E"),
+    ("AN87330",     "power_meter",     "AN87330"),
     ("IT6333A",     "dc_source",       "IT6333A"),
     ("IT6332A",     "dc_source",       "IT6332A"),
     ("IT7321",      "ac_source",       "IT7321"),
     ("IT7322",      "ac_source",       "IT7322"),
+    ("IT7821E",     "ac_source",       "IT7821E"),
+    ("IT7800E",     "ac_source",       "IT7821E"),
+    ("IT7800",      "ac_source",       "IT7821E"),
+    # NOTE: 移除 "ITECH" 通用条目，避免误匹配 IT8701P 等非交流源设备
+    # IT7821E 已有独立条目覆盖，0x8700 覆盖 IT8701P
     ("0x6300",      "dc_source",       "IT6333A"),
     ("0x7300",      "ac_source",       "IT7321"),
     ("0x8700",      "electronic_load", "IT8701P"),
@@ -137,3 +143,58 @@ def ack_verify_sniffer(port, baudrate=19200, timeout=1.0):
         return resp == ACK
     except Exception:
         return False
+
+
+# ============================================================
+# AN87330 Ainuo 协议扫描
+# ============================================================
+
+# AN87330 查询帧（CH1 查询）
+_AN87330_QUERY_FRAME = bytes([0x7B, 0x00, 0x09, 0x01, 0xF1, 0x00, 0x01, 0xFC, 0x7D])
+
+
+def scan_an87330(port, baudrate=38400, timeout=2.0):
+    """
+    对指定 COM 端口发送 Ainuo 协议查询帧，验证是否为 AN87330。
+    AN87330 响应：7B 00 73 ...（115字节，38400 8N1）
+    返回 True 表示识别为 AN87330。
+    """
+    try:
+        ser = serial.Serial(port, baudrate=baudrate, bytesize=serial.EIGHTBITS,
+                            parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
+                            timeout=timeout, write_timeout=timeout)
+        ser.flushInput()
+        ser.write(_AN87330_QUERY_FRAME)
+        time.sleep(1.0)  # 等待响应
+        # 读取足够多字节，AN87330 应答 115 字节
+        resp = b''
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            n = ser.in_waiting
+            if n > 0:
+                resp += ser.read(n)
+                if len(resp) >= 115:
+                    break
+            time.sleep(0.1)
+        ser.close()
+
+        # 验证：响应头 0x7B，长度字段 0x00 0x73 (115)，功能码 0xF1
+        if (len(resp) >= 5
+                and resp[0] == 0x7B
+                and resp[1] == 0x00 and resp[2] == 0x73  # total = 115
+                and resp[3] == 0x01 and resp[4] == 0xF1):
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def scan_all_comports_an87330(com_ports):
+    """
+    扫描所有可用 COM 口，尝试识别 AN87330 功率计。
+    返回第一个识别到的端口，或 None。
+    """
+    for port in sorted(com_ports.keys()):
+        if scan_an87330(port):
+            return port
+    return None

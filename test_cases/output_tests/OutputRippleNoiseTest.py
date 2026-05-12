@@ -111,6 +111,9 @@ class OutputRippleNoiseTest(TestCase):
 
         ch = int(self.params.get("osc_output_ch", 2))
 
+        # 先切回 MAIN 模式（上一个测试可能是 ROLL 模式，ROLL 下改时基有延迟）
+        osc.set_timebase_mode("MAIN")
+
         # 时基（全局固定 20ms/div）
         osc.set_timebase(self.TIME_BASE_S)
 
@@ -302,6 +305,22 @@ class OutputRippleNoiseTest(TestCase):
             return osc.save_screenshot(os.path.join(base_dir, fname))
         except Exception:
             return None
+
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
 
     # ---------- verify ----------
     def verify(self) -> bool:

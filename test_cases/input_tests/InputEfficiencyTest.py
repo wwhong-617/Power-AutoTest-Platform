@@ -457,7 +457,7 @@ class InputEfficiencyTest(TestCase):
         # 步驌一：设置负载模式
         eload = instruments.get("ELOAD")
         if eload and getattr(eload, "_connected", False):
-            eload.set_mode_cc(iout_set)
+            eload.set_load_current(iout_set)
 
         pwr_in_ch  = self.params.get("pwr_in_v_ch", "CH1")
         pwr_out_ch = self.params.get("pwr_out_v_ch", "CH2")
@@ -854,3 +854,13 @@ class InputEfficiencyTest(TestCase):
                 return False
             # overall_pass is True or None (NA) → continue
         return True
+
+    # =================================================================
+    # teardown — 统一放电清理
+    # =================================================================
+    def teardown(self, instruments: Dict[str, Any]):
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        self.end_time = time.time()

@@ -471,6 +471,22 @@ class OutputOcpProtectTest(TestCase):
             "fail_reason":   fail_reason,
         })
 
+    # ---------- teardown ----------
+    def teardown(self, instruments: Dict[str, Any]):
+        """放电下电，清理示波器通道和测量项。"""
+        self._step_discharge(
+            instruments.get("AC_SOURCE"),
+            instruments.get("ELOAD"),
+        )
+        osc = instruments.get("OSC")
+        if osc:
+            try:
+                for ch in range(1, 5):
+                    osc.set_channel_off(ch)
+                osc.clear_measurements()
+            except Exception:
+                pass
+
     # ---------- verify ----------
     def verify(self) -> bool:
         """所有 sub_result 均 PASS 才返回 True。"""

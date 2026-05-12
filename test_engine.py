@@ -427,6 +427,8 @@ class TestEngine:
 
         try:
             case._engine = self   # 注入引擎引用，供用例查询暂停/停止状态
+            # 每个用例开始前重新初始化所有仪器，确保干净状态
+            self.initialize_all_instruments()
             case.run(self.instruments)
             result = case.result.value
 

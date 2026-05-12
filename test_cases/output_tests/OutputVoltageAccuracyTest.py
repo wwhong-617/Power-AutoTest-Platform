@@ -36,6 +36,7 @@ class OutputVoltageAccuracyTest(TestCase):
         )
 
     def setup(self, instruments: Dict[str, Any]):
+        super().setup(instruments)
         ac = instruments.get("AC_SOURCE")
         eload = instruments.get("ELOAD")
         if ac:
