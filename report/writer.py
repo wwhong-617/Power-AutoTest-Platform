@@ -22,6 +22,7 @@ from report._mappings import (
 from config_schema import CASE_REGISTRY, CASE_CN_NAMES
 from report.styles import _mkstyle, _rfill, _fmt
 from report._data import _flatten
+from report.efficiency_chart import plot_efficiency_curves
 
 def generate_excel(results_path: str, output_dir: str = None,
                    dut_name: str = "") -> str:
@@ -238,6 +239,15 @@ def generate_excel(results_path: str, output_dir: str = None,
         _write_case_sheet(ws, r, flat_rows, cat, s,
                           result_wf_offset.get(r_id, 0), case_rows,
                           results_base=os.path.dirname(results_path))
+
+    # ─────────────────────────────────────────────────────────────
+    # 效率曲线 Sheet：检测 InputEfficiencyTest 结果，生成曲线图
+    # ─────────────────────────────────────────────────────────────
+    chart_paths = plot_efficiency_curves(data, report_dir)
+    if chart_paths:
+        ws_chart = wb.create_sheet("效率曲线")
+        ws_chart.column_dimensions["A"].width = 6
+        _write_efficiency_chart_sheet(ws_chart, chart_paths, s)
 
     wb.save(output_path)
 
@@ -716,3 +726,93 @@ def _write_waveform_sheet(ws, all_wf_entries: list, case_start_info: list,
         next_case_start = next(case_info_iter, None)
 
     return case_rows
+
+
+# ============================================================
+# 效率曲线 Sheet
+# ============================================================
+
+def _write_efficiency_chart_sheet(ws, chart_paths: list, s: dict):
+    """
+    将效率曲线图写入独立的 Excel Sheet。
+
+    Args:
+        ws:          openpyxl Worksheet
+        chart_paths: [(vout_str, png_path), ...] 按 Vout 升序排列
+        s:           样式字典（来自 _mkstyle）
+    """
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+    from openpyxl.drawing.image import Image as XLImage
+    from PIL import Image as PILImage
+
+    if not chart_paths:
+        return
+
+    # 图表尺寸（由 efficiency_chart.py 的 matplotlib figsize 和 dpi 决定）
+    # figsize=(10, 6) inch, dpi=150 → 图片尺寸 = 1500×900 px
+    CHART_W_PX = 1500
+    CHART_H_PX = 900
+
+    # 列宽固定 100pt（用户确认的合适宽度）
+    # Excel 行高限制约 409pt，图片高度不超过此值
+    COL_W_PT = 100
+    MAX_H_PT = 409
+
+    # 第1行：标题
+    ws.row_dimensions[1].height = 28
+    ws.column_dimensions["A"].width = COL_W_PT
+    ws.merge_cells(f"A1:B1")
+    t = ws["A1"]
+    t.value = "效率曲线"
+    t.font = s["title_font"]
+    t.alignment = Alignment(horizontal="center", vertical="center")
+
+    cur_row = 2
+    for vout_str, chart_path in chart_paths:
+        if not os.path.isfile(chart_path):
+            continue
+
+        # 校验图片实际尺寸（用 PIL 读取）
+        try:
+            with PILImage.open(chart_path) as im:
+                actual_w, actual_h = im.size
+            if actual_w > 0 and actual_h > 0:
+                scale_w = CHART_W_PX / actual_w
+                scale_h = CHART_H_PX / actual_h
+                if scale_w != scale_h:
+                    # 优先保证高度不超限
+                    # 以高度为准，按比例缩放宽度
+                    scale = MAX_H_PT / actual_h
+                img_h_px = int(actual_h * scale)
+                img_w_px = int(actual_w * scale)
+                img_h_pt = img_h_px
+            else:
+                scale = MAX_H_PT / CHART_H_PX
+                img_h_pt = int(CHART_H_PX * scale)
+                img_w_px = int(CHART_W_PX * scale)
+        except Exception:
+            scale = MAX_H_PT / CHART_H_PX
+            img_h_pt = int(CHART_H_PX * scale)
+            img_w_px = int(CHART_W_PX * scale)
+
+        # 名称行
+        ws.row_dimensions[cur_row].height = 20
+        ws.merge_cells(f"A{cur_row}:B{cur_row}")
+        c = ws.cell(cur_row, 1, f"Vout = {vout_str}V")
+        c.font = Font(size=11, bold=True, color="1976D2")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        cur_row += 1
+
+        # 图片行：行高精确匹配图片高度
+        ws.row_dimensions[cur_row].height = img_h_pt
+        img = XLImage(chart_path)
+        img.width = img_w_px
+        img.height = img_h_pt
+        img.anchor = f"A{cur_row}"
+        ws.add_image(img)
+        cur_row += 1
+
+        # 空一行隔开
+        ws.row_dimensions[cur_row].height = 10
+        cur_row += 1

@@ -33,10 +33,10 @@
         }
     },
     "product_info": {
-        "product_name": "张工-100W",
+        "product_name": "黄泽鹏-100W",
         "product_type": "充电器",
-        "input_voltage_lo": 100.0,
-        "input_voltage_hi": 264.0,
+        "input_voltage_min": 180.0,
+        "input_voltage_max": 264.0,
         "output_voltage_min": 5.0,
         "output_voltage_max": 20.0,
         "output_power": 67.0,
@@ -44,8 +44,8 @@
         "hv_power": 0.0,
         "lv_power": 0.0,
         "load_startup_enabled": true,
-        "load_startup_current": 3.0,
-        "load_startup_voltage": 5.2,
+        "load_startup_current": 1.0,
+        "load_startup_voltage": 5.1,
         "specs_v2": {
             "6级能效要求_pct_enable": 1.0,
             "7级能效要求_pct_enable": 0.0,
@@ -108,7 +108,7 @@
         "pd": {
             "PDO1": {
                 "enabled": 1,
-                "value": "5.2V3A"
+                "value": "5.1V3A"
             },
             "PDO2": {
                 "enabled": 1,
@@ -116,15 +116,15 @@
             },
             "PDO3": {
                 "enabled": 1,
-                "value": "15V3A"
+                "value": "12V3A"
             },
             "PDO4": {
                 "enabled": 1,
-                "value": "20V3.25A"
+                "value": "15V3A"
             },
             "PDO5": {
-                "enabled": 0,
-                "value": "20V3.25A"
+                "enabled": 1,
+                "value": "20V5A"
             },
             "PDO6": {
                 "enabled": 0,
@@ -212,74 +212,50 @@
     "test_conditions_v2": [
         {
             "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
+            "vin": 180.0,
+            "freq": 50.0,
             "proto": "PD-PDO1",
-            "vout": 5.2,
+            "vout": 5.1,
             "iout": 3.0
         },
         {
             "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
+            "vin": 180.0,
+            "freq": 50.0,
             "proto": "PD-PDO2",
             "vout": 9.0,
             "iout": 3.0
         },
         {
             "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
+            "vin": 180.0,
+            "freq": 50.0,
             "proto": "PD-PDO3",
+            "vout": 12.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 180.0,
+            "freq": 50.0,
+            "proto": "PD-PDO4",
             "vout": 15.0,
             "iout": 3.0
         },
         {
             "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
-            "proto": "PD-PDO4",
+            "vin": 180.0,
+            "freq": 50.0,
+            "proto": "PD-PDO5",
             "vout": 20.0,
-            "iout": 3.25
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO1",
-            "vout": 5.2,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO2",
-            "vout": 9.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO3",
-            "vout": 15.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO4",
-            "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         },
         {
             "product_type": "充电器",
             "vin": 230.0,
             "freq": 50.0,
             "proto": "PD-PDO1",
-            "vout": 5.2,
+            "vout": 5.1,
             "iout": 3.0
         },
         {
@@ -295,7 +271,7 @@
             "vin": 230.0,
             "freq": 50.0,
             "proto": "PD-PDO3",
-            "vout": 15.0,
+            "vout": 12.0,
             "iout": 3.0
         },
         {
@@ -303,15 +279,23 @@
             "vin": 230.0,
             "freq": 50.0,
             "proto": "PD-PDO4",
+            "vout": 15.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 230.0,
+            "freq": 50.0,
+            "proto": "PD-PDO5",
             "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         },
         {
             "product_type": "充电器",
             "vin": 264.0,
             "freq": 50.0,
             "proto": "PD-PDO1",
-            "vout": 5.2,
+            "vout": 5.1,
             "iout": 3.0
         },
         {
@@ -327,7 +311,7 @@
             "vin": 264.0,
             "freq": 50.0,
             "proto": "PD-PDO3",
-            "vout": 15.0,
+            "vout": 12.0,
             "iout": 3.0
         },
         {
@@ -335,8 +319,16 @@
             "vin": 264.0,
             "freq": 50.0,
             "proto": "PD-PDO4",
+            "vout": 15.0,
+            "iout": 3.0
+        },
+        {
+            "product_type": "充电器",
+            "vin": 264.0,
+            "freq": 50.0,
+            "proto": "PD-PDO5",
             "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         }
     ]
 }
