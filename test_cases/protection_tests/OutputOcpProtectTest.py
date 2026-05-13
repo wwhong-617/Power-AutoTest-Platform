@@ -434,10 +434,18 @@ class OutputOcpProtectTest(TestCase):
                 time.sleep(0.2)
                 elapsed += 0.2
             vout_final = self._measure_vout(pm, vout_target)
-            passed = (vout_final >= float(vout_target) * self.SELF_RECOVER_RATIO)
-            fail_reason = "" if passed else (
-                f"自恢复后Vout={vout_final:.3f}V"
-                f"<{self.SELF_RECOVER_RATIO*100:.0f}%×{vout_target}V目标")
+            ocp_pass = (spec_lo <= ocp_point <= spec_hi)
+            passed = (vout_final >= float(vout_target) * self.SELF_RECOVER_RATIO) and ocp_pass
+            if passed:
+                fail_reason = ""
+            elif not ocp_pass:
+                fail_reason = (
+                    f"OCP点{ocp_point:.3f}A超规格("
+                    f"{spec_lo:.2f}~{spec_hi:.2f}A)")
+            else:
+                fail_reason = (
+                    f"自恢复后Vout={vout_final:.3f}V<"
+                    f"{self.SELF_RECOVER_RATIO*100:.0f}%×{vout_target}V目标")
             return recover_status, passed, fail_reason, spec_lo, spec_hi
         return recover_status, False, "保护逻辑为锁死但实际为自恢复", spec_lo, spec_hi
 
