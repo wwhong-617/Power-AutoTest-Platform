@@ -292,7 +292,7 @@ class InputDipTest(TestCase):
            - vin_lo ≥ 180V（HV 区）：直接跌落 AC 电压，负载保持满载 iout_target
         2. 上行恢复 vin_lo → vin_hi：AC 电压从低压往高压升
            - 先升 AC 电压
-           - vin_lo < 180V 时：等待 AC 实测电压 ≥ 180V 后切回满载 iout_target（最多等 4s 超时放弃）
+           - vin_lo < 180V 时：等待 AC 实测电压达到 vin_hi 目标值（±5V 容差）后切回满载 iout_target（最多等 4s 超时放弃）
            - vin_lo ≥ 180V 时：负载保持满载，无需切换
         支持暂停/停止。
 
@@ -352,18 +352,19 @@ class InputDipTest(TestCase):
             ac.set_frequency(freq_hi)
             info(f"[IDT] C{cycle} 电压恢复 → {int(vin_hi)}V/{int(freq_hi)}Hz")
 
-            # vin_lo < 180V 时，电压进入 HV 区（≥180V）后切回满载
+            # vin_lo < 180V 时，降功率后在电压回升至目标高压后切回满载
             if derate_in_lo:
-                # 等待电压回升并检测 vac >= 180V 后再切满载
+                # 等待电压回升至 vin_hi 目标值后（±5V 容差），再切回满载
                 for _ in range(20):
                     if self.is_stop_requested():
                         break
                     time.sleep(0.2)
                     try:
                         vac_now = ac.measure_voltage()
-                        if vac_now is not None and vac_now >= 180.0:
+                        # 用 vin_hi - 5V 作为判定阈值，兼容 100V~132V 等低压区配置
+                        if vac_now is not None and vac_now >= float(vin_hi) - 5.0:
                             eload.set_mode_cc(float(iout_target))
-                            info(f"[IDT] C{cycle} 进入 HV 区（{vac_now:.1f}V）→ 满载 {iout_target}A")
+                            info(f"[IDT] C{cycle} 电压恢复（{vac_now:.1f}V）→ 满载 {iout_target}A")
                             break
                     except Exception:
                         pass
