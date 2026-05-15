@@ -156,7 +156,7 @@ def save_config(app, path: str):
     # ---- product_info 统一字典写 ----
     prod_info = {
         "product_name":           app._prod_name_var.get(),
-        "product_type":          app._prod_type_vars.get("充电器") and "充电器" or "适配器",
+        "product_type":          "充电器" if app._prod_type_vars.get("充电器", tk.IntVar()).get() == 1 else "适配器",
         "input_voltage_min":      _safe_float(app._input_voltage_lo_var.get()),
         "input_voltage_max":      _safe_float(app._input_voltage_hi_var.get()),
         "output_voltage_min":   _safe_float(app._output_voltage_min_var.get()),
