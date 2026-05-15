@@ -99,6 +99,8 @@ class AN87330(BasePowerMeter):
         self._serial      = None
         self._connected   = False
         self._wiring_mode = "3P4W"
+        self._input_ch    = 1   # 交流输入侧通道（1=CH1），由 set_channel_roles() 设置
+        self._output_ch   = 2   # DUT 输出侧通道（2=CH2），由 set_channel_roles() 设置
 
     # ─── 完整 override connect()，跳过父类的 SCPI *IDN? 流程 ──────────────────
     # AN87330 使用 Ainuo 私有二进制协议，非 SCPI，父类 connect() 的 *IDN?
@@ -643,10 +645,11 @@ class AN87330(BasePowerMeter):
 
     def measure_input_power(self) -> float:
         """
-        读取输入端功率（CH1）。
+        读取输入端功率。
+        通道由 set_channel_roles(input_voltage_ch="CH1"/"CH2"/"CH3") 配置。
         InputEfficiencyTest 通过此方法读取 Pin。
         """
-        return self._query_ch(1)["power"]
+        return self._query_ch(self._input_ch)["power"]
 
     def measure_apparent_power(self, channel: int = 0) -> float:
         return self._query_ch(channel + 1)["apparent"]
@@ -680,6 +683,23 @@ class AN87330(BasePowerMeter):
     def measure_output_power_factor(self) -> float:
         """测量输出侧功率因数，即 CH2"""
         return self._query_ch(2)["pf"]
+
+    # ─── 通道角色配置（兼容 WT333E set_channel_roles 接口）───────────────
+
+    def set_channel_roles(self, input_voltage_ch: str = None, output_voltage_ch: str = None):
+        """
+        设置 AN87330 的输入/输出通道角色，兼容 instrument_manager.apply_channel_roles() 调用。
+
+        Args:
+            input_voltage_ch:  交流输入侧通道，"CH1" / "CH2" / "CH3"（连接 AC Source）
+            output_voltage_ch: DUT 输出侧通道，"CH1" / "CH2" / "CH3"（连接电子负载）
+        """
+        if input_voltage_ch is not None:
+            self._input_ch = self._parse_channel(input_voltage_ch)
+            logger.info(f"[AN87330] 输入通道 → CH{self._input_ch}")
+        if output_voltage_ch is not None:
+            self._output_ch = self._parse_channel(output_voltage_ch)
+            logger.info(f"[AN87330] 输出通道 → CH{self._output_ch}")
 
     # ─── 三相汇总（命令字 0x02）──────────────────────────────
 

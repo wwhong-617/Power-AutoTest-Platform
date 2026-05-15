@@ -30,6 +30,7 @@ Instrument Manager - 仪器管理器
 import time
 from typing import Dict, Any, List, Optional, Tuple
 
+import pyvisa.errors
 from logger_config import logger, info, warning, error
 from instruments.base import InstrumentConnectionState, InstrumentError
 
@@ -363,14 +364,22 @@ class InstrumentManager:
                 error(f"[InstrumentManager] {key} 永久性错误，不重试: {e}")
                 self._on_instrument_state(key, InstrumentConnectionState.FAILED, f"{e}")
                 return False
-            except Exception as e:
-                # 暂时性错误（USB枚举延迟/VISA超时等），继续重试
-                error(f"[InstrumentManager] {key} 第 {attempt} 次异常: {e}")
+            except pyvisa.errors.VisaIOError as e:
+                # VISA 超时：暂时性错误，继续重试
+                error(f"[InstrumentManager] {key} VISA 超时（第 {attempt}/{retries} 次）: {e}")
                 if attempt < retries:
                     wait_s = delay_ms * attempt / 1000.0
                     self._on_instrument_state(key, InstrumentConnectionState.RETRYING,
                                              f"等待 {wait_s:.1f}s 后重试...")
                     time.sleep(wait_s)
+                else:
+                    self._on_instrument_state(key, InstrumentConnectionState.FAILED,
+                                            f"VISA 超时，多次重试后仍失败")
+            except Exception as e:
+                # 其他异常：永久性错误（如 AttributeError、ValueError、OSError），不重试
+                error(f"[InstrumentManager] {key} 永久性异常，不重试: {e}")
+                self._on_instrument_state(key, InstrumentConnectionState.FAILED, f"{e}")
+                return False
 
         self._on_instrument_state(key, InstrumentConnectionState.FAILED,
                                   "多次重试后仍失败")
