@@ -127,7 +127,7 @@ class TestCase:
     # 通用步骤方法（所有输入/输出测试共用）
     # =====================================================================
 
-    def _step_discharge(self, ac, elod, current=3.0, duration=2.0):
+    def _step_discharge(self, ac, elod, current=2.0, duration=2.0):
         """
         统一放电流程：AC OFF → 电子负载 CC 恒流放电 → OFF。
 
