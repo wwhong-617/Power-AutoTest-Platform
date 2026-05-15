@@ -136,7 +136,7 @@ class EngineAPI:
                 "load_startup_enabled": self._load_startup_var.get(),
                 "load_startup_current": self._load_startup_current_var.get(),
                 "load_startup_voltage": self._load_startup_voltage_var.get(),
-                "ultra_light_power": self._ultra_light_power_var.get(),
+                "ultra_light_power": _safe_float(self._ultra_light_power_var.get(), 0.0),
                 "power_segment": self._power_segment_var.get(),
                 "hv_power": self._hv_power_var.get(),
                 "lv_power": self._lv_power_var.get(),
