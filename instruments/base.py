@@ -166,10 +166,14 @@ class BaseInstrument(ABC):
             self._report(InstrumentConnectionState.VALIDATING,
                          f"验证身份: {self._idn}")
             if not self._validate_identity():
+                cls_name = self.__class__.__name__
                 self._report(InstrumentConnectionState.FAILED,
                              f"身份不符: {self._idn}")
                 self._connected = False
-                raise InstrumentError(f"身份验证失败: {self._idn}")
+                raise InstrumentError(
+                    f"身份验证失败 [{cls_name}@{self._address}]\n"
+                    f"  实测IDN: {self._idn}"
+                )
 
             # ── 5. 完成 ────────────────────────────────────
             self._connected = True
