@@ -417,6 +417,7 @@ class TestEngine:
             return None
 
         self._run_single_case(case, 1, 1)
+        self._state = EngineState.FINISHED
         self._state = EngineState.IDLE
         return case
 
