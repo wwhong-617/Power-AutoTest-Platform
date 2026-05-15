@@ -378,6 +378,7 @@ class ConfigUI(EngineAPI):
         except Exception as e:
             _log("ERROR", f"加载配置文件失败: {e}", exc_info=True)
             messagebox.showerror("错误", f"加载配置文件失败: {e}\n\n详细信息已写入日志文件。")
+            return
 
     def _clear_skip_flag(self):
         """延迟清除跳过标志，允许后续选择操作正常更新详情面板"""
