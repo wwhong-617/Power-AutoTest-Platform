@@ -267,9 +267,6 @@ class TestEngine:
             case.params["output_voltage_max"] = float(dut.get("output_voltage_max", 12.0) or 12.0)
             case.params["output_voltage_min"] = float(dut.get("output_voltage_min", 0.0) or 0.0)
             case.params.setdefault("output_current", dut.get("output_current", 3.0))
-            # 若用例未设置效率下限，则用 DUT 目标效率填充
-            if "efficiency_min" in case.spec and not case.spec.get("efficiency_min"):
-                case.spec["efficiency_min"] = dut.get("target_efficiency", 85.0)
 
         # ============================================================
         # ⑤ 产品信息参数（输入范围 / 功率分段）
