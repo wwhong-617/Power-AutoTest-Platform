@@ -223,8 +223,11 @@ def build_specs_flat(spec_vars, specs_raw):
         hi_val = _to_float(hi_raw, math.nan)
 
         # 降级：从 specs_raw 读取（覆盖 NaN）
-        if (math.isnan(lo_val) or math.isnan(hi_val)) and label_text in specs_raw:
-            raw = specs_raw[label_text]
+        # 兼容旧配置格式：优先用 label_text 查找，fallback 到 flat_key
+        if (math.isnan(lo_val) or math.isnan(hi_val)):
+            raw = specs_raw.get(label_text) or specs_raw.get(flat_key)
+            if not raw:
+                continue
             if math.isnan(lo_val):
                 lo_val = _to_float(raw.get("lo"), math.nan)
             if math.isnan(hi_val):
