@@ -114,6 +114,7 @@ def _build_left_panel(app, left_panel):
     app._power_segment_var = tk.IntVar(value=0)
     app._hv_power_var = tk.StringVar()
     app._lv_power_var = tk.StringVar()
+    app._ultra_light_power_var = tk.StringVar()
 
     def _row_pack(parent, label_text, widget, side="left", padx_val=0):
         row = ttk.Frame(parent)
@@ -147,6 +148,12 @@ def _build_left_panel(app, left_panel):
     row.pack(anchor="w", pady=2)
     ttk.Label(row, text="输出功率规格(W)：", width=18, font=("Arial", 9)).pack(side="left")
     ttk.Entry(row, textvariable=app._output_power_var, width=24).pack(side="left")
+
+    # 极轻载功率
+    row = ttk.Frame(box_basic)
+    row.pack(anchor="w", pady=2)
+    ttk.Label(row, text="极轻载功率（W）：", width=18, font=("Arial", 9)).pack(side="left")
+    ttk.Entry(row, textvariable=app._ultra_light_power_var, width=24).pack(side="left")
 
     # 高低压功率分段
     row = ttk.Frame(box_basic)
@@ -194,6 +201,7 @@ def _build_left_panel(app, left_panel):
         "Brown-in（V）", "Brown-out（V）",
         "输出过压点（V）", "输出欠压点（V）", "输出过流点（%）",
         "纹波要求（mV）", "上升时间（ms）", "开机延迟时间（ms）",
+        "极轻载功耗（W）",
     ]:
         row = ttk.Frame(box_spec)
         row.pack(anchor="w", pady=2)

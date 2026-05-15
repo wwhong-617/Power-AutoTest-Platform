@@ -47,14 +47,28 @@ class ConfigUI(EngineAPI):
         self._status_labels = {}
         self._engine = None          # TestEngine 实例
         self._test_thread = None     # 测试执行线程
-        self._source_conditions = []  # 唯一事实数据源：生成或加载时写入，筛选时从它计算
-        self._filtered_conditions = {}  # per-case 筛选条件 {case_key: [(vin,freq,...),...]}
+        self._source_conditions = []  # 唯一事实数据源：生成或加载时写入，筛选时从它计算 [{vin, freq, proto, vout, iout, product_type}, ...]
+        self._filtered_conditions = {}  # per-case 筛选条件 {case_key: [row_dict, ...]}
         self._last_config_path = None  # 最近一次保存/加载的配置文件路径
         self._build_ui()
         # 启动时自动加载上次配置
     def _try_load_last_config(self):
         """读取上次保存的配置路径并自动加载"""
+        # 项目根目录（新标准位置）
         last_path_file = os.path.join(os.path.dirname(__file__), ".last_config")
+        # 兼容旧版：若根目录不存在，尝试 ui/ 子目录并迁移
+        ui_last = os.path.join(os.path.dirname(__file__), "ui", ".last_config")
+        if not os.path.exists(last_path_file) and os.path.exists(ui_last):
+            try:
+                with open(ui_last, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                if content and os.path.exists(content):
+                    # 迁移到新位置
+                    with open(last_path_file, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    _log("INFO", f"已迁移配置文件路径到项目根目录")
+            except Exception as e:
+                _log("WARNING", f"迁移配置路径失败：{e}")
         try:
             if os.path.exists(last_path_file):
                 with open(last_path_file, "r", encoding="utf-8") as f:
@@ -474,7 +488,7 @@ class ConfigUI(EngineAPI):
         """根据产品信息配置生成全量测试条件
 
         生成两份数据：
-        - self._source_conditions：唯一事实数据源，数值元组列表 [(vin, freq, proto_label, vout, iout, product_type), ...]
+        - self._source_conditions：唯一事实数据源，dict 列表 [{vin, freq, proto, vout, iout, product_type}, ...]
         - 写入 _cond_tree：字符串形式，供 UI 显示用
         """
         import re
@@ -568,23 +582,23 @@ class ConfigUI(EngineAPI):
                         if ov is None:
                             continue
                         proto_label = f"{ptype}-{pname}"
-                        self._source_conditions.append((vin, freq, proto_label, ov, oi, "charger"))
+                        self._source_conditions.append({"vin": vin, "freq": freq, "proto": proto_label, "vout": ov, "iout": oi, "product_type": "charger"})
                         ov_str = str(int(ov)) if ov == int(ov) else str(ov)
                         oi_str = str(round(oi, 2)) if oi else ""
                         rows.append(("充电器", vin_str, freq_str, proto_label, ov_str, oi_str))
                 else:
-                    self._source_conditions.append((vin, freq, "—", None, None, "charger"))
+                    self._source_conditions.append({"vin": vin, "freq": freq, "proto": "—", "vout": None, "iout": None, "product_type": "charger"})
                     rows.append(("充电器", vin_str, freq_str, "—", "—", "—"))
 
             # --- 适配器 ---
             elif is_adapter:
                 if out_v and out_p:
                     oi_calc = out_p / out_v
-                    self._source_conditions.append((vin, freq, "—", out_v, oi_calc, "adapter"))
+                    self._source_conditions.append({"vin": vin, "freq": freq, "proto": "—", "vout": out_v, "iout": oi_calc, "product_type": "adapter"})
                     ov_str = str(int(out_v)) if out_v == int(out_v) else str(out_v)
                     rows.append(("适配器", vin_str, freq_str, "—", ov_str, str(round(oi_calc, 2))))
                 elif out_v:
-                    self._source_conditions.append((vin, freq, "—", out_v, None, "adapter"))
+                    self._source_conditions.append({"vin": vin, "freq": freq, "proto": "—", "vout": out_v, "iout": None, "product_type": "adapter"})
                     ov_str = str(int(out_v)) if out_v == int(out_v) else str(out_v)
                     rows.append(("适配器", vin_str, freq_str, "—", ov_str, "—"))
 
@@ -595,8 +609,12 @@ class ConfigUI(EngineAPI):
         _log("INFO", f"测试条件已生成：共 {len(rows)} 条")
         # 强制刷新所有用例的筛选条件（不只是已勾选的）
         self._apply_filtered_conditions(refresh_all=True)
-        self._save_config_to_file(self._last_config_path or "")
-        _log("INFO", "测试条件已自动刷新并保存")
+        # _last_config_path 为空时弹对话框让用户选择保存位置，避免写入当前目录
+        if not self._last_config_path:
+            self.save_config()   # 弹对话框，用户取消则不保存
+        else:
+            self._save_config_to_file(self._last_config_path)
+        _log("INFO", "测试条件已生成并刷新")
 
     def _add_cond_row(self):
         """手动添加一行测试条件（弹出对话框填写）"""
@@ -654,7 +672,7 @@ class ConfigUI(EngineAPI):
                   font=("Arial", 9), command=top.destroy).pack(side="left")
     def _rebuild_source_from_tree(self):
         """
-        从 _cond_tree（UI 显示树）重建 _source_conditions（数值元组数据源），
+        从 _cond_tree（UI 显示树）重建 _source_conditions（dict 数据源），
         保持两份数据同步。
         """
         def to_product_type(label: str) -> str:
@@ -682,7 +700,7 @@ class ConfigUI(EngineAPI):
                 iout = float(iout_s) if iout_s not in ("", "—") else None
             except (ValueError, TypeError):
                 iout = None
-            self._source_conditions.append((vin, freq, str(proto), vout, iout, to_product_type(prod_type_label)))
+            self._source_conditions.append({"vin": vin, "freq": freq, "proto": str(proto), "vout": vout, "iout": iout, "product_type": to_product_type(prod_type_label)})
 
     def _delete_cond_row(self):
         """删除 Treeview 中选中的行"""

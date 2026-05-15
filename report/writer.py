@@ -81,15 +81,29 @@ def generate_excel(results_path: str, output_dir: str = None,
     ws_sum["A2"].font = s["sub_font"]
     ws_sum["A2"].alignment = Alignment(horizontal="center")
 
-    cat_stats = defaultdict(lambda: {"total": 0, "passed": 0, "failed": 0, "skipped": 0})
+    # -------------------------------------------------------
+    # 用例统计：按实测用例 + sub_results 展开统计
+    # case_stats[case_name] = {total, passed, failed, skipped}
+    # -------------------------------------------------------
+    case_stats = defaultdict(lambda: {"total": 0, "passed": 0, "failed": 0, "skipped": 0})
     for r in results:
-        cn = _cn(r.get("name", ""))
-        cat = _cat(cn)
-        cat_stats[cat]["total"] += 1
-        res = r.get("result", "")
-        if res == "PASS":   cat_stats[cat]["passed"] += 1
-        elif res == "FAIL": cat_stats[cat]["failed"] += 1
-        elif res == "SKIP": cat_stats[cat]["skipped"] += 1
+        case_name = _cn(r.get("name", "")) or r.get("name", "")
+        flat_rows = _flatten(r)
+        if flat_rows:
+            # 有 sub_results：按测试结论统计
+            for row_data in flat_rows:
+                case_stats[case_name]["total"] += 1
+                res = row_data.get("测试结论", "")
+                if res == "PASS":   case_stats[case_name]["passed"] += 1
+                elif res == "FAIL": case_stats[case_name]["failed"] += 1
+                elif res == "SKIP": case_stats[case_name]["skipped"] += 1
+        else:
+            # 无 sub_results：按用例级 result 统计
+            case_stats[case_name]["total"] += 1
+            res = r.get("result", "")
+            if res == "PASS":   case_stats[case_name]["passed"] += 1
+            elif res == "FAIL": case_stats[case_name]["failed"] += 1
+            elif res == "SKIP": case_stats[case_name]["skipped"] += 1
 
     row = 4
     ws_sum.merge_cells(f"A{row}:E{row}")
@@ -123,23 +137,22 @@ def generate_excel(results_path: str, output_dir: str = None,
 
     row += 1
     ws_sum.merge_cells(f"A{row}:E{row}")
-    ws_sum[f"A{row}"].value = "▌ 分类统计"
+    ws_sum[f"A{row}"].value = "▌ 用例统计"
     ws_sum[f"A{row}"].font = Font(bold=True, size=11, color="1976D2")
     row += 1
 
-    for col_i, h in enumerate(["测试分类", "总数", "通过", "失败", "跳过"], 1):
+    for col_i, h in enumerate(
+            ["实测测试用例", "测试条件总数",
+             "通过数量", "失败数量", "跳过数量"], 1):
         c = ws_sum.cell(row, col_i, h)
         c.font = s["hdr_font"]; c.fill = s["hdr_fill"]
         c.border = s["border"]; c.alignment = Alignment(horizontal="center")
     row += 1
 
-    for cat in ["输入测试", "输出测试", "保护功能测试", "协议测试", "极限测试"]:
-        if cat not in cat_stats:
-            continue
-        st = cat_stats[cat]
+    for case_name, st in case_stats.items():
         t, p, f, sk = st["total"], st["passed"], st["failed"], st["skipped"]
-        rate = f"{p/t*100:.1f}%" if t > 0 else "0%"
-        for col_i, v in enumerate([cat, str(t), f"{p}({rate})", str(f), str(sk)], 1):
+        for col_i, v in enumerate(
+                [case_name, str(t), str(p), str(f), str(sk)], 1):
             c = ws_sum.cell(row, col_i, v)
             c.border = s["border"]
             c.alignment = Alignment(horizontal="center" if col_i > 1 else "left")
@@ -334,7 +347,7 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
     # ---- 前缀固定列：序号 + 用例名称 ----
     prefix_cols = [
         ("序号", 6),
-        ("用例名称", 14),
+        ("用例名称", 22),
         # ("测试结论", 8),
     ]
     prefix_keys = [k for k, _ in prefix_cols]   # 2项
@@ -414,10 +427,6 @@ def _write_case_sheet(ws, result: dict, sub_rows: list, cat: str, s: dict,
                         row_data.get("输入条件", ""),
                         row_data.get("协议", ""))
                 v = wf_path  # 写入完整路径供后续超链接使用
-            elif col_name in ("开机波形", "关机波形"):
-                # 从 JSON key 直接读取（_make_result 已写入），不做 auto-discovery
-                wf_path = row_data.get(col_name, "")
-                v = wf_path
             else:
                 # 列头名即 COLS 定义；通过映射找 JSON key，找不到则用列头名本身
                 json_key = _key_alias.get(col_name, col_name)

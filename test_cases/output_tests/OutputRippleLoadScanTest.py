@@ -17,14 +17,14 @@ OutputRippleLoadScanTest - 输出纹波负载扫描测试
 
   每条件步骤：
     1. 开机自检（基类 startup_self_check，最多6次清除重试）
-    2. 诱骗器协议配置（基类 _step_setup_sniffer）
-    3. 示波器准备（动态时基，8格显示完整扫描窗口）
-    4. 负载电流缓调扫描
+    2. 启动示波器 RUN + 诱骗器协议配置
+    3. 负载电流缓调扫描（iout_eff → 0A → iout_eff，步进 0.05A，每步 1s）
        - 初始带载 iout_eff，稳定 1s
-       - 下降：iout_eff → 0A（步进 0.05A，每步 1s）
-       - 上升：0A → iout_eff（步进 0.05A，每步 1s）
-       - 示波器全程滚动，扫描完成后 STOP，读取峰峰值
-    5. 判定 PASS/FAIL，下电
+       - 下降：iout_eff → 0A
+       - 上升：0A → iout_eff
+       - 示波器全程滚动（ROLL），扫描完成后 STOP，读取峰峰值
+       （判定 PASS/FAIL 在扫描内部完成）
+    4. 下电
 
 【报告字段】
   序号 | 用例名称 | 输入条件 | 协议 | 输出电压(V) | 输出电流(A) |

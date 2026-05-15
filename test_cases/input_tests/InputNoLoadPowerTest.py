@@ -11,17 +11,17 @@ NoLoadPowerTest - 输入空载功耗测试
   例: {"vin": 220.0, "freq": 50.0, "proto": "PD", "vout": 20.0, "iout": 3.25}
 
 【判定逻辑】
-  avg_power ∈ [noload_power_lo, noload_power_hi] → PASS
+  avg_power ∈ [空载功耗_W_lo, 空载功耗_W_hi] → PASS
 
 【功率计档位设置】
-  - setup：电流量程锁定最小档（0.5A），用于小电流精度
-  - 每条条件前：电压档位根据实际 AC 输入电压由驱动自动选择
+  - setup：电流量程锁定最小档（0.5A），用于待机功耗小电流测量精度
+  - 每条条件前：功率计电压档位由 _step_load_condition 根据实际 AC 电压设置
   - 驱动自动选档：set_voltage_range_auto(ch, vin) → 选 ≥ vin 的最小档
 
 【sub_result 字段】
   input_cond, proto_label, vout_target,
-  spec_min, spec_max,
-  avg_power_w, min_power_w, max_power_w,
+  spec_min (=空载功耗_W_lo), spec_max (=空载功耗_W_hi),
+  avg_power, min_power, max_power,
   overall_pass, fail_reason, skipped
 """
 

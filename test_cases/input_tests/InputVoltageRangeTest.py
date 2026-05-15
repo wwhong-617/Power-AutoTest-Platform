@@ -25,18 +25,19 @@ from logger_config import info, warning
 
 class InputVoltageRangeTest(TestCase):
     """
-  输入电压范围测试（每条 test_condition 独立执行）。
+    输入电压范围测试（每条 test_condition 独立执行）。
 
-  测试步骤：
-    1. 开机自检（基类 startup_self_check，不下电）
-    2. 示波器 ROLL 模式（时基覆盖完整扫描时长）
-    3. 诱骗器协议（charger 专用）
-    4. 电子负载 CC 模式上电
-    5. 电压往返扫描：先缓降（Vin_cfg→Vin_min），再缓升（Vin_min→Vin_cfg）
-       Vac≥180V → 50Hz；Vac<180V → 60Hz；每步等待 settle_time
-    6. 示波器 STOP 冻结波形，测量 Vmax/Vmin，保存波形截图
-    7. 汇总判定：Vmax ≤ Vout×110% 且 Vmin ≥ Vout×90% → PASS
-  """
+    测试步骤：
+      1. 开机自检（基类 startup_self_check，不下电）
+      2. 示波器 ROLL 模式（时基覆盖完整扫描时长）
+      3. 诱骗器协议（charger 专用）
+      4. 电子负载 CC 模式上电
+      5. 电压往返扫描：先缓降（Vin_cfg→Vin_lo），再缓升（Vin_lo→Vin_cfg）
+         Vac≥180V → 50Hz；Vac<180V → 60Hz；功率随电压段切换；每步等待 settle_time
+      6. 示波器 STOP 冻结波形，测量 Vmax/Vmin，保存波形截图
+      7. 汇总判定（Vmax≤Vout×110% 且 Vmin≥Vout×90%）
+      8. 放电下电
+    """
 
     # ---------- 常量 ----------
     VOLTAGE_STEP        = 5.0    # Vac 步进（V）

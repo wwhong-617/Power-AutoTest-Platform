@@ -17,13 +17,13 @@ OutputRippleInputScanTest - 输出纹波输入扫描测试
 
   每条件步骤：
     1. 开机自检（基类 startup_self_check，最多6次清除重试）
-    2. 诱骗器协议配置（基类 _step_setup_sniffer）
+    2. 启动示波器 RUN + 诱骗器协议配置
     3. 电子负载设置到测试条件电流（功率分段后 iout_eff）
     4. 输入电压缓调扫描（Vin_cfg → Vin_lo → Vin_cfg，步进 5V，每步 1s）
        - Vin ≥ 180V → freq=50Hz；Vin < 180V → freq=60Hz
        - HV/LV 跨边界时分 5 步渐进切换负载电流
        - 示波器全程滚动（ROLL），扫描完成后 STOP，读取峰峰值
-    5. 判定 PASS/FAIL，下电
+    5. 下电（判定 PASS/FAIL 在 _run_vin_scan 内完成）
 
   注意：本测试仅用示波器 CH2 测量输出纹波，输入电压由 AC 源实时调节，
         无需示波器单独配置输入电压通道。
@@ -168,8 +168,6 @@ class OutputRippleInputScanTest(TestCase):
         vin_lo_ui = float(
             product_info.get("input_voltage_min")
             or self.params.get("input_voltage_min")
-            or product_info.get("input_voltage_lo")
-            or self.params.get("input_voltage_lo")
             or 90.0
         )
 

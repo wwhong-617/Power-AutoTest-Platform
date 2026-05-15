@@ -33,13 +33,15 @@ EfficiencyTest - 能效测试
   硬编码档位表 [600/300/150/60/30/15]V、[20/10/5/2/1/0.5]A
   自动选≥测试值的最小档并设置。
 
-【报告输出（16 列）】
-  序号 | 输入条件 | 输出条件 | 负载点 | 效率下限 | 效率上限 |
-  输入功率(W) | 输出电压(V) | 输出电流(A) | 效率(%) | 测试结论 |
-  6级平均能效(%) | 6级能效结论 | 7级平均能效(%) | 7级能效结论 | 备注
+【报告输出（17 列）】
+  输入条件 | 协议 | 输出电压(V) | 输出电流(A) | 负载点 | Iout设定(A) |
+  输入功率(W) | 测量电压(V) | 测量电流(A) | 效率(%) |
+  6级平均能效(%) | 6级能效结论 | 7级平均能效(%) | 7级能效结论 |
+  平均能效要求(%) | 测试结论 | 备注
 
-  - 6 级平均能效数值填在 50% 负载点行，其余行为 0
-  - 7 级平均能效数值填在 10% 负载点行，其余行为 0
+  注意：「测试结论」列不定义在 COLS 中，由 report_generator._flatten() 统一注入。
+  - 6 级平均能效数值填在 50% 负载点行，其余行为空
+  - 7 级平均能效数值填在 10% 负载点行，其余行为空
   - 所有负载点均 PASS 才算整体 PASS
 """
 
@@ -55,10 +57,18 @@ logger = logging.getLogger("PowerAutoTest")
 
 class InputEfficiencyTest(TestCase):
     """
-    能效测试用例。
-
     每个测试条件（vin, freq, proto, vout, iout）执行 5 个负载点
-    （10% / 25% / 50% / 75% / 100%），计算各点效率及 6 级/7 级平均效率。
+    （100% → 75% → 50% → 25% → 10%，从大到小），计算各点效率及 6 级/7 级平均效率。
+
+    执行步骤：
+      ① 开机自检
+      ② 诱骗器设置协议
+      ③ 电子负载 ON（功率分段后电流带载老化）
+      ④ 老化 20s
+      ⑤ 循环测 5 个负载点
+      ⑥ 计算 6 级/7 级平均能效
+      ⑦ 填 sub_results（含各点结论 + 平均能效 + 能效等级结论）
+      ⑧ 放电下电
 
     仪器依赖：AC_SOURCE / ELOAD / SNIFFER / POWER_METER
     """
@@ -140,8 +150,8 @@ class InputEfficiencyTest(TestCase):
         # 注意值由字典流到字典值，不是 tuple 是 dict
         self.test_conditions = self.test_conditions or self.params.get("test_conditions", [])
         self.warmup = float(self.params.get("warmup", 10.0))
-        self.input_voltage_lo = float(self.params.get("input_voltage_min", 90.0))
-        self.input_voltage_hi = float(self.params.get("input_voltage_max", 264.0))
+        self.input_voltage_min = float(self.params.get("input_voltage_min", 90.0))
+        self.input_voltage_max = float(self.params.get("input_voltage_max", 264.0))
         self.power_segment = int(self.params.get("power_segment", 0))
         self.hv_power = float(self.params.get("hv_power", 0.0))
         self.lv_power = float(self.params.get("lv_power", 0.0))
@@ -296,7 +306,7 @@ class InputEfficiencyTest(TestCase):
         Returns:
             选中的条件 dict，无可用条件时返回 None
         """
-        input_voltage_min = self.input_voltage_lo
+        input_voltage_min = self.input_voltage_min
 
         # 步骤 1：输入电压下限筛选（len(dict) 无法判断字段完整性，改用字段非 None 检查）
         valid_conds = [

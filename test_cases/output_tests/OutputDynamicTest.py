@@ -26,7 +26,7 @@ OutputDynamicTest - 输出动态测试
        1.7 放电下电
   verify: 所有动态场景均 PASS 才返回 True
 
-报告字段（序号/用例名称由 report_generator 自动注入，其余字段与 sub_result key 一一对应）：
+报告字段（COLS 定义，序号/用例名称由 report_generator._flatten() 自动注入）：
   输入条件 / 协议 / 输出电压(V) / 输出电流(A) /
   动态场景 / 规格上限 / 规格下限 / 最大值 / 最小值 / 测试结论 / 测试波形 / 备注
 """
@@ -172,7 +172,6 @@ class OutputDynamicTest(TestCase):
             startup_ok, _, fail_reason = self.startup_self_check(
                 instruments, vin=float(vin_cfg), freq=float(freq_cfg)
             )
-            self.measurements[f"startup_ok_c{cond_idx+1}"] = startup_ok
             if not startup_ok:
                 info(f"[OutputDynamic] 条件「{cond_label}」开机自检失败：{fail_reason}，跳过")
                 self._step_discharge(ac, eload)

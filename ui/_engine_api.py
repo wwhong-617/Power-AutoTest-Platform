@@ -129,7 +129,6 @@ class EngineAPI:
                 "product_name": prod_name,
                 "input_voltage_min": input_lo,
                 "input_voltage_max": input_hi,
-                "output_voltage": output_voltage_max,
                 "output_voltage_min": output_voltage_min,
                 "output_voltage_max": output_voltage_max,
                 "output_power": output_power,
@@ -137,6 +136,7 @@ class EngineAPI:
                 "load_startup_enabled": self._load_startup_var.get(),
                 "load_startup_current": self._load_startup_current_var.get(),
                 "load_startup_voltage": self._load_startup_voltage_var.get(),
+                "ultra_light_power": self._ultra_light_power_var.get(),
                 "power_segment": self._power_segment_var.get(),
                 "hv_power": self._hv_power_var.get(),
                 "lv_power": self._lv_power_var.get(),
@@ -145,7 +145,6 @@ class EngineAPI:
             },
             "dut": {
                 "name": prod_name,
-                "output_voltage": output_voltage_max,
                 "output_voltage_min": output_voltage_min,
                 "output_voltage_max": output_voltage_max,
                 "output_power": output_power,
@@ -153,7 +152,6 @@ class EngineAPI:
                 "input_voltage_max": input_hi,
             },
             "adapter": {
-                "output_voltage": output_voltage_max,
                 "output_voltage_min": output_voltage_min,
                 "output_voltage_max": output_voltage_max,
                 "input_voltage_min": input_lo,
@@ -344,7 +342,11 @@ class EngineAPI:
         self._test_thread = None
 
     def _pause_tests(self):
+        # 停止请求时不允许暂停（state 已为 STOPPED）
         if self._engine and self._engine.state.value in ("RUNNING", "PAUSED"):
+            # 再次检查 stop_requested，防止竞态
+            if getattr(self._engine, '_stop_requested', False):
+                return
             if self._engine.state.value == "RUNNING":
                 self._engine.pause()
                 self._append_run_log(f"[{time.strftime('%H:%M:%S')}] 测试已暂停\n")
@@ -359,7 +361,13 @@ class EngineAPI:
     def _stop_tests(self):
         if self._engine:
             self._engine.stop()
-            self._append_run_log(f"[{time.strftime('%H:%M:%S')}] 停止请求已发送\n")
+            self._append_run_log(f"[{time.strftime('%H:%M:%S')}] 停止请求已发送，正在等待测试线程结束...\n")
+            # 等待测试线程结束，防止重新运行时的竞态
+            if self._test_thread and self._test_thread.is_alive():
+                self._test_thread.join(timeout=5.0)
+                if self._test_thread.is_alive():
+                    self._append_run_log(f"[WARNING] 测试线程未能在 5s 内结束\n")
+            self._append_run_log(f"[{time.strftime('%H:%M:%S')}] 停止完成\n")
 
     def _export_partial_results(self):
         if not self._engine:

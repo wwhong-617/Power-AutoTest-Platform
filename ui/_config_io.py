@@ -9,6 +9,9 @@ import json
 import math
 import os
 from typing import List
+
+# 项目根目录（兼容 config_ui.py 和 ui/ 子目录两种运行场景）
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import tkinter as tk
 
 from config_schema import (
@@ -165,6 +168,7 @@ def save_config(app, path: str):
         "load_startup_enabled":  bool(app._load_startup_var.get()),
         "load_startup_current":  _safe_float(app._load_startup_current_var.get()),
         "load_startup_voltage":  _safe_float(app._load_startup_voltage_var.get()),
+        "ultra_light_power":     _safe_float(app._ultra_light_power_var.get()),
         "specs_v2":              build_specs_flat(app._spec_vars, {}),
         "protection_logic_v2":   build_protection_flat(app._prot_vars, {}),
         "qc": {
@@ -244,8 +248,8 @@ def save_config(app, path: str):
         json.dump(cfg, f, ensure_ascii=False, indent=4)
 
     app._last_config_path = path
-    # 记录路径到自动加载文件
-    last_path_file = os.path.join(os.path.dirname(__file__), ".last_config")
+    # 记录路径到自动加载文件（写入项目根目录，与 _try_load_last_config 读取位置一致）
+    last_path_file = os.path.join(_PROJECT_ROOT, ".last_config")
     with open(last_path_file, "w", encoding="utf-8") as f:
         f.write(path)
 
@@ -271,8 +275,8 @@ def load_config(app, path: str):
     # 产品信息
     pi = cfg.get("product_info", {})
     app._prod_name_var.set(pi.get("product_name", ""))
-    app._input_voltage_lo_var.set(pi.get("input_voltage_min", pi.get("input_voltage_lo", "")))
-    app._input_voltage_hi_var.set(pi.get("input_voltage_max", pi.get("input_voltage_hi", "")))
+    app._input_voltage_lo_var.set(pi.get("input_voltage_min", ""))
+    app._input_voltage_hi_var.set(pi.get("input_voltage_max", ""))
     # 输出电压：双字段，兼容旧配置只有单一 output_voltage
     app._output_voltage_min_var.set(pi.get("output_voltage_min", ""))
     app._output_voltage_max_var.set(
@@ -292,6 +296,7 @@ def load_config(app, path: str):
     app._load_startup_var.set(pi.get("load_startup_enabled", 0))
     app._load_startup_current_var.set(pi.get("load_startup_current", ""))
     app._load_startup_voltage_var.set(pi.get("load_startup_voltage", ""))
+    app._ultra_light_power_var.set(pi.get("ultra_light_power", ""))
 
     # specs_v2: 扁平 float 字典
     specs_v2 = pi.get("specs_v2", {})
@@ -374,7 +379,7 @@ def load_config(app, path: str):
         vals = [row.get(f) for f in ["product_type", "vin", "freq", "proto", "vout", "iout"]]
         tree.insert("", "end", values=vals, tags=(tag,))
 
-    # 恢复 _source_conditions（v2 dict 转回行元组）
+    # 恢复 _source_conditions（dict 列表，与 UI 展示树同步）
     app._source_conditions = []
     for row in tc_rows:
         try:
@@ -388,7 +393,7 @@ def load_config(app, path: str):
             iout = float(iout_raw) if iout_raw is not None else None
             raw_pt = str(row.get("product_type", "charger")) or "charger"
             ptype = "charger" if raw_pt in ("充电器", "charger") else "adapter"
-            app._source_conditions.append((vin, freq, proto, vout, iout, ptype))
+            app._source_conditions.append({"vin": vin, "freq": freq, "proto": proto, "vout": vout, "iout": iout, "product_type": ptype})
         except (ValueError, TypeError, IndexError):
             pass
 
@@ -396,3 +401,7 @@ def load_config(app, path: str):
     # 重新计算筛选条件并刷新树显示
     app._apply_filtered_conditions(refresh_all=True, update_tree=True)
     app._last_config_path = path
+    # 同步更新 .last_config（写入项目根目录）
+    last_path_file = os.path.join(_PROJECT_ROOT, ".last_config")
+    with open(last_path_file, "w", encoding="utf-8") as f:
+        f.write(path)

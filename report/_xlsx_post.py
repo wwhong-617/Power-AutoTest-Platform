@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """_xlsx_post.py - xlsx 后处理与入口"""
 
+import os
 import re
 from report.writer import generate_excel
 
@@ -117,13 +118,6 @@ def _fix_rels(xlsx_path: str):
                     if fname not in original_names:
                         zout.writestr(fname, content)
         shutil.move(tmp, xlsx_path)
-
-
-# ============================================================
-# rels 绝对路径修复（openpyxl → 相对路径）
-# ============================================================
-import re
-
 
 
 

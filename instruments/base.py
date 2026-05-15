@@ -169,7 +169,7 @@ class BaseInstrument(ABC):
                 self._report(InstrumentConnectionState.FAILED,
                              f"身份不符: {self._idn}")
                 self._connected = False
-                return False
+                raise InstrumentError(f"身份验证失败: {self._idn}")
 
             # ── 5. 完成 ────────────────────────────────────
             self._connected = True

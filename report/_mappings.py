@@ -87,5 +87,3 @@ GLOBAL_COLS = [
 
 def _get_cols(case_name_en: str = None):
     return GLOBAL_COLS
-
-CASE_COLS = None

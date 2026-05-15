@@ -31,7 +31,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 
 from logger_config import logger, info, warning, error
-from instruments.base import InstrumentConnectionState
+from instruments.base import InstrumentConnectionState, InstrumentError
 
 # =====================================================================
 # 动态仪器驱动映射
@@ -356,16 +356,21 @@ class InstrumentManager:
                 if ok:
                     # 连接成功（终态由 inst.connect() 内部上报，这里只打日志）
                     return True
-                else:
-                    warning(f"[InstrumentManager] {key} 第 {attempt} 次返回 False")
+                # connect() 成功返回 True；返回 False 在新逻辑中不再出现
+                warning(f"[InstrumentManager] {key} 第 {attempt} 次返回 False")
+            except InstrumentError as e:
+                # 永久性错误（如身份验证失败），不重试
+                error(f"[InstrumentManager] {key} 永久性错误，不重试: {e}")
+                self._on_instrument_state(key, InstrumentConnectionState.FAILED, f"{e}")
+                return False
             except Exception as e:
+                # 暂时性错误（USB枚举延迟/VISA超时等），继续重试
                 error(f"[InstrumentManager] {key} 第 {attempt} 次异常: {e}")
-
-            if attempt < retries:
-                wait_s = delay_ms * attempt / 1000.0
-                self._on_instrument_state(key, InstrumentConnectionState.RETRYING,
-                                         f"等待 {wait_s:.1f}s 后重试...")
-                time.sleep(wait_s)
+                if attempt < retries:
+                    wait_s = delay_ms * attempt / 1000.0
+                    self._on_instrument_state(key, InstrumentConnectionState.RETRYING,
+                                             f"等待 {wait_s:.1f}s 后重试...")
+                    time.sleep(wait_s)
 
         self._on_instrument_state(key, InstrumentConnectionState.FAILED,
                                   "多次重试后仍失败")

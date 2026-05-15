@@ -29,9 +29,8 @@ PRODUCT_INFO_FIELDS = {
     # 基础信息
     "product_name":          str,
     "product_type":          str,   # "charger" | "adapter"
-    "input_voltage_lo":      float,
-    "input_voltage_hi":      float,
-    "output_voltage":        float,     # 兼容旧配置（标称/最大）
+    "input_voltage_min":    float,
+    "input_voltage_max":    float,
     "output_voltage_min":   float,
     "output_voltage_max":   float,
     "output_power":          float,
@@ -61,6 +60,7 @@ SPECS_KEYS = [
     ("开关机过冲_pct",       "开关机过冲（%）"),
     ("上升时间_ms",         "上升时间（ms）"),
     ("开机延迟时间_ms",       "开机延迟时间（ms）"),
+    ("极轻载功耗_W",          "极轻载功耗（W）"),
     ("空载功耗_W",          "空载功耗（W）"),
     ("待机功耗_W",          "待机功耗（W）"),
     ("Brown_in_V",          "Brown-in（V）"),
@@ -325,6 +325,7 @@ CASE_REGISTRY = {
     "InputDipTest":            {"module": "test_cases.input_tests.InputDipTest",            "cn_name": "输入跌落测试",           "filter_mode": "voltage_segment"},
     "InputNoLoadPowerTest":    {"module": "test_cases.input_tests.InputNoLoadPowerTest",    "cn_name": "输入空载功率测试",       "filter_mode": "passthrough"},
     "InputEfficiencyTest":     {"module": "test_cases.input_tests.InputEfficiencyTest",     "cn_name": "输入效率测试",           "filter_mode": "passthrough"},
+    "InputUltraLightLoadTest": {"module": "test_cases.input_tests.InputUltraLightLoadTest", "cn_name": "输入极轻载功耗测试",      "filter_mode": "passthrough"},
     # output_tests
     "OutputPowerOnOffTest":     {"module": "test_cases.output_tests.OutputPowerOnOffTest",     "cn_name": "输出开关机测试",         "filter_mode": "passthrough"},
     "OutputRiseTimeTest":       {"module": "test_cases.output_tests.OutputRiseTimeTest",       "cn_name": "输出电压上升时间测试",   "filter_mode": "min_vout"},

@@ -253,6 +253,9 @@ class TestEngine:
         case.params["load_startup_current"]   = float(product_info.get("load_startup_current", 0.0) or 0.0)
         case.params["load_startup_voltage"]   = float(product_info.get("load_startup_voltage", 0.0) or 0.0)
 
+        # 极轻载功率参数（输入极轻载功耗测试用）
+        case.params["ultra_light_power"] = float(product_info.get("ultra_light_power", 0.0) or 0.0)
+
         # ============================================================
         # ④ DUT 参数（测试报告摘要用）
         #    setdefault 保证已注入的值不会被覆盖
@@ -260,7 +263,7 @@ class TestEngine:
         if dut:
             case.params.setdefault("dut_name",       dut.get("name", ""))
             case.params.setdefault("dut_model",      dut.get("model", ""))
-            case.params.setdefault("input_voltage",  dut.get("output_voltage", 220))
+            case.params.setdefault("input_voltage",  dut.get("input_voltage", 220))
             case.params["output_voltage_max"] = float(dut.get("output_voltage_max", 12.0) or 12.0)
             case.params["output_voltage_min"] = float(dut.get("output_voltage_min", 0.0) or 0.0)
             case.params.setdefault("output_current", dut.get("output_current", 3.0))
@@ -271,8 +274,8 @@ class TestEngine:
         # ============================================================
         # ⑤ 产品信息参数（输入范围 / 功率分段）
         # ============================================================
-        case.params["input_voltage_min"] = float(product_info.get("input_voltage_min", product_info.get("input_voltage_lo", 90.0)))
-        case.params["input_voltage_max"] = float(product_info.get("input_voltage_max", product_info.get("input_voltage_hi", 264.0)))
+        case.params["input_voltage_min"] = float(product_info.get("input_voltage_min", 90.0))
+        case.params["input_voltage_max"] = float(product_info.get("input_voltage_max", 264.0))
         case.params["power_segment"] = int(product_info.get("power_segment", 0) or 0)
         case.params["hv_power"]      = float(product_info.get("hv_power") or 0.0)
         case.params["lv_power"]      = float(product_info.get("lv_power") or 0.0)
@@ -473,6 +476,8 @@ class TestEngine:
         self._stop_requested = True
         self._pause_requested = False
         self._stop_event.set()
+        # 立即更新状态，使 _pause_tests 等调用能立即感知停止
+        self._state = EngineState.STOPPED
         # 立即断开所有仪器，中断任何阻塞的 VISA 操作
         if self._instrument_mgr:
             self._instrument_mgr.disconnect_all()

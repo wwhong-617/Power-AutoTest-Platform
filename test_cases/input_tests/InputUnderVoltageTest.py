@@ -17,7 +17,7 @@ test_conditions 格式（List[dict]）：
     - 恢复点（recovery_point）必须在 brown_in [lo, hi] 范围内
   protection_mode = "latch"（锁死）：
     - 欠压点（uvp_point）必须在 brown_out [lo, hi] 范围内
-    - 在 brown_in 范围内不得发生重启
+    - 缓升过程中 Vout 不得高于掉电阈值（Vout×70%），否则判定为重启（FAIL）
 
 """
 
@@ -42,7 +42,8 @@ class InputUnderVoltageTest(TestCase):
     4. 电子负载 CC 模式上电
     5. 电压扫描（4阶段）
     6. 示波器 STOP 冻结波形，保存截图
-    7. 汇总判定
+    7. 汇总判定，记录 sub_result
+    8. 放电下电
 
   电压扫描 4 阶段：
     ① 缓降：Vin_min → (brown_out_lo - 5V)，0.5V/步，2s/步
@@ -52,8 +53,8 @@ class InputUnderVoltageTest(TestCase):
     ③ 快升：0V → (brown_in_lo - 5V)，5V/步，1s/步
            检测快升过程中是否有提前恢复
     ④ 缓升：(brown_in_lo - 5V) → Vin_min，0.5V/步，2s/步
-           - self 模式：检测输出 > Vout×90% → 记录 recovery_point
-           - latch 模式：检测输出 > Vout×70% → 判定重启（FAIL）
+           - self 模式：检测输出 > Vout×90%（recovery_thresh）→ 记录 recovery_point
+           - latch 模式：检测输出 > Vout×70%（dropout_thresh）→ 判定重启（FAIL）
 
   判定逻辑：
     protection_mode = "self"：
@@ -154,7 +155,7 @@ class InputUnderVoltageTest(TestCase):
     # ---------- execute ----------
     def execute(self, instruments: Dict[str, Any]):
         """
-        主流程：逐条 test_conditions 执行，每条经 7 个步骤。
+        主流程：逐条 test_conditions 执行，每条经 8 个步骤。
 
         步骤1：开机自检（不下电）
         步骤2：示波器 ROLL 模式
@@ -163,6 +164,7 @@ class InputUnderVoltageTest(TestCase):
         步骤5：电压扫描 4 阶段
         步骤6：示波器 STOP，保存波形
         步骤7：汇总判定，记录 sub_result
+        步骤8：放电下电
         """
         ac      = instruments.get("AC_SOURCE")
         eload   = instruments.get("ELOAD")

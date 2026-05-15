@@ -9,7 +9,7 @@ StandbyPowerTest - 待机功耗测试
   - standby_power_max: 最大待机功耗（W），典型值 0.3~0.5W
 
 注意：本测试为独立用例，spec 直接定义在 __init__ 里。
-  若由引擎注入 specs_v2["待机功耗_lo"]，可覆盖默认值。
+  若由引擎注入 specs_v2["待机功耗_W_lo"]，可覆盖默认值。
 """
 
 import time
@@ -61,7 +61,7 @@ class StandbyPowerTest(TestCase):
             },
             spec={
                 # key 命名遵循 base.py setup() 的合并规则（_lo/_hi），便于引擎注入覆盖
-                "待机功耗_lo": standby_power_max,
+                "待机功耗_W_lo": standby_power_max,
             }
         )
 
@@ -95,7 +95,7 @@ class StandbyPowerTest(TestCase):
 
         self.measurements["standby_power_w"] = round(pin, 4)
 
-        # 规格取 self.spec["待机功耗_lo"]（来自引擎注入或 __init__ 默认值）
+        # 规格取 self.spec["待机功耗_W_lo"]（来自引擎注入或 __init__ 默认值）
         spec_max = self.spec.get("待机功耗_W_lo", self._standby_power_max)
         pass_flag = pin <= spec_max
 

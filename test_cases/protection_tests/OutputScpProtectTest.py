@@ -28,7 +28,7 @@ OutputScpProtectTest - 输出短路保护测试
     2. 诱骗器协议配置（基类 _step_setup_sniffer）
     3. 示波器配置 SINGLE 触发（NORMAL 模式 / NEG 边沿）
     4. 电子负载设目标电流后短路（short_on）
-    5. 示波器 ARM → 等3s → 短路 → 等3s → 短路保持 SHORT_ON_HOLD=5s
+    5. 示波器 ARM → 等5s → 短路 → 等5s → 短路保持 SHORT_ON_HOLD=5s
     6. 等待示波器触发完成，测量短路中电压
     7. 短路解除（short_off），停止采集，保存波形
     8. 等待 SHORT_OFF_HOLD，测量短路后电压

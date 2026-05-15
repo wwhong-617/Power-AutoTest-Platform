@@ -37,9 +37,9 @@ class InputDipTest(TestCase):
     2. 示波器 ROLL 模式（双通道配置 + 估算时基）
     3. 诱骗器协议
     4. 电子负载 CC 模式上电
-    5. 输入跳变序列（Vin_min ↔ Vin_max 循环）
-    6. 示波器 STOP 冻结波形，读取 Vmax/Vmin，保存截图
-    7. 汇总判定：Vmax ≤ Vout×110% 且 Vmin ≥ Vout×90% → PASS
+    5. 输入跳变序列（Vin_lo ↔ Vin_cfg 循环，功率随电压段切换）
+    6. 示波器 STOP 冻结波形，读取 Vmax/Vmin，保存截图，汇总判定
+    7. 放电下电
   """
 
     # ---------- 常量 ----------
@@ -112,8 +112,8 @@ class InputDipTest(TestCase):
         步骤3：诱骗器协议
         步骤4：电子负载 CC 模式上电
         步骤5：输入跳变序列（vin_lo_ui ↔ vin_cfg，功率随电压段切换）
-        步骤6：示波器 STOP，读取 Vmax/Vmin，保存波形
-        步骤7：放电（下电）
+        步骤6：示波器 STOP，读取 Vmax/Vmin，保存截图，汇总判定
+        步骤7：放电下电
         """
         ac      = instruments.get("AC_SOURCE")
         eload   = instruments.get("ELOAD")
