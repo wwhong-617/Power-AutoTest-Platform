@@ -112,6 +112,13 @@ IDN_MAP = [
     ("0x7300",      "ac_source",       "IT7321"),
     ("0x8700",      "electronic_load", "IT8701P"),
     ("DSO-X 4024A", "oscilloscope",    "DSOX4024A"),
+    ("TBS2000",      "oscilloscope",    "TBS2000"),
+    ("TBS2074",      "oscilloscope",    "TBS2000"),
+    ("TBS2072",      "oscilloscope",    "TBS2000"),
+    ("TBS2104",      "oscilloscope",    "TBS2000"),
+    ("TBS2102",      "oscilloscope",    "TBS2000"),
+    ("TBS2204",      "oscilloscope",    "TBS2000"),
+    ("TBS2202",      "oscilloscope",    "TBS2000"),
 ]
 
 

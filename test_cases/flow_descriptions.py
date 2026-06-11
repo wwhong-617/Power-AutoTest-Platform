@@ -287,4 +287,17 @@ FLOW_DESCRIPTIONS = {
         "规格判定：FCP 握手成功 → PASS"
     ),
 
+    "反复调压极限测试": (
+        "测试策略（每条 test_condition 独立执行）：\n\n"
+        "1. 适配器 → SKIP（不涉及调压）\n\n"
+        "2. 开机自检：基类 startup_self_check\n\n"
+        "3. 示波器 ROLL 模式：时基适配完整调压过程，垂直刻度按最大输出电压设置\n\n"
+        "4. 循环 N 次：\n"
+        "    4.1 配置诱骗器 Seq1（例：PD-PDO1）→ CC 带载 2s → 功率计读取 Vout → 判定（≥Vout×90%）→ 保存波形\n"
+        "    4.2 配置诱骗器 Seq2（例：PD-PDO3）→ CC 带载 10s → 功率计读取 Vout → 判定（≥Vout×90%）→ 保存波形\n"
+        "    4.3 放电下电（准备下一循环）\n\n"
+        "5. 放电下电\n\n"
+        "规格判定：每循环内 Seq1 和 Seq2 均满足 Vout≥Vout×90% → PASS"
+    ),
+
 }

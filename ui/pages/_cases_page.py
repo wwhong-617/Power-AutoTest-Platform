@@ -95,7 +95,9 @@ def _build_left_panel(app, left_panel):
     # ---- 用例分类初始化 ----
     app._test_case_defs = {}
     for en_key, cn_name in CASE_CN_NAMES.items():
-        if "保护" in cn_name:
+        if "极限" in cn_name:
+            category = "极限测试"
+        elif "保护" in cn_name:
             category = "保护测试"
         elif cn_name.startswith("输入"):
             category = "输入测试"

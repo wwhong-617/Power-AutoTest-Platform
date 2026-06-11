@@ -307,6 +307,7 @@ class TestCase:
             return
         elod.set_mode_cc(iout)
         elod.input_on()
+        info(f"[Load] 电子负载 CC={iout:.2f}A ON")
 
     # =====================================================================
     # 示波器操作（通用）

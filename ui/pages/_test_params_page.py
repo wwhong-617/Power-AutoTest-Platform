@@ -121,6 +121,9 @@ def _build_left_panel(app, left_panel):
     app._warmup_var = tk.StringVar()
     app._onoff_cycle_var = tk.StringVar()
     app._short_cycle_var = tk.StringVar()
+    app._ramp_seq1_var = tk.StringVar()
+    app._ramp_seq2_var = tk.StringVar()
+    app._ramp_cycles_var = tk.StringVar(value="1")
 
     def _entry_row(parent, label_text, var, note=""):
         row = ttk.Frame(parent)
@@ -136,6 +139,12 @@ def _build_left_panel(app, left_panel):
                "例：10-10，开机10s关机10s")
     _entry_row(box_other, "反复短路周期(s):", app._short_cycle_var,
                "例：10-10，开机10s短路10s")
+    _entry_row(box_other, "反复调压序列1:", app._ramp_seq1_var,
+               "例：QC2.0-5V / PD-PDO1")
+    _entry_row(box_other, "反复调压序列2:", app._ramp_seq2_var,
+               "例：QC2.0-12V / PD-PDO3")
+    _entry_row(box_other, "反复调压次数:", app._ramp_cycles_var,
+               "循环次数")
 
 
 def _build_right_panel(app, right_panel):

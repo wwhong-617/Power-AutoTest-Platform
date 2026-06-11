@@ -17,9 +17,9 @@
             "model": "DSOX4024A"
         },
         "power_meter": {
-            "comm": "USB",
-            "addr": "USB0::0x0B21::0x0025::543131333130313239::INSTR",
-            "model": "WT333E"
+            "comm": "COM",
+            "addr": "COM3",
+            "model": "AN87330"
         },
         "sniffer": {
             "comm": "COM",
@@ -33,25 +33,24 @@
         }
     },
     "product_info": {
-        "product_name": "戴尔-65W",
+        "product_name": "坤兴-100W",
         "product_type": "充电器",
         "input_voltage_min": 100.0,
         "input_voltage_max": 264.0,
-        "output_voltage_min": 5.0,
+        "output_voltage_min": 19.0,
         "output_voltage_max": 20.0,
-        "output_power": 90.0,
+        "output_power": 100.0,
         "power_segment": false,
         "hv_power": 0.0,
         "lv_power": 0.0,
         "load_startup_enabled": true,
-        "load_startup_current": 2.0,
-        "load_startup_voltage": 5.0,
-        "ultra_light_power": 0.0,
+        "load_startup_current": 5.0,
+        "load_startup_voltage": 20.0,
         "specs_v2": {
             "6级能效要求_pct_enable": 1.0,
             "7级能效要求_pct_enable": 0.0,
-            "电压精度_pct_lo": -5.0,
-            "电压精度_pct_hi": 5.0,
+            "电压精度_pct_lo": -10.0,
+            "电压精度_pct_hi": 10.0,
             "大动态负载范围_pct_lo": -10.0,
             "大动态负载范围_pct_hi": 10.0,
             "小动态负载范围_pct_lo": -5.0,
@@ -117,14 +116,14 @@
             },
             "PDO3": {
                 "enabled": 1,
-                "value": "12V3A"
+                "value": "15V3A"
             },
             "PDO4": {
                 "enabled": 1,
-                "value": "15V3A"
+                "value": "20V3.25A"
             },
             "PDO5": {
-                "enabled": 1,
+                "enabled": 0,
                 "value": "20V3.25A"
             },
             "PDO6": {
@@ -212,164 +211,36 @@
     },
     "test_conditions_v2": [
         {
-            "product_type": "充电器",
+            "product_type": "适配器",
             "vin": 100.0,
             "freq": 60.0,
-            "proto": "PD-PDO1",
-            "vout": 5.2,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
-            "proto": "PD-PDO2",
-            "vout": 9.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
-            "proto": "PD-PDO3",
-            "vout": 12.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
-            "proto": "PD-PDO4",
-            "vout": 15.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 100.0,
-            "freq": 60.0,
-            "proto": "PD-PDO5",
+            "proto": "—",
             "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         },
         {
-            "product_type": "充电器",
+            "product_type": "适配器",
             "vin": 115.0,
             "freq": 60.0,
-            "proto": "PD-PDO1",
-            "vout": 5.2,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO2",
-            "vout": 9.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO3",
-            "vout": 12.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO4",
-            "vout": 15.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 115.0,
-            "freq": 60.0,
-            "proto": "PD-PDO5",
+            "proto": "—",
             "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         },
         {
-            "product_type": "充电器",
+            "product_type": "适配器",
             "vin": 230.0,
             "freq": 50.0,
-            "proto": "PD-PDO1",
-            "vout": 5.2,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 230.0,
-            "freq": 50.0,
-            "proto": "PD-PDO2",
-            "vout": 9.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 230.0,
-            "freq": 50.0,
-            "proto": "PD-PDO3",
-            "vout": 12.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 230.0,
-            "freq": 50.0,
-            "proto": "PD-PDO4",
-            "vout": 15.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 230.0,
-            "freq": 50.0,
-            "proto": "PD-PDO5",
+            "proto": "—",
             "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         },
         {
-            "product_type": "充电器",
+            "product_type": "适配器",
             "vin": 264.0,
             "freq": 50.0,
-            "proto": "PD-PDO1",
-            "vout": 5.2,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 264.0,
-            "freq": 50.0,
-            "proto": "PD-PDO2",
-            "vout": 9.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 264.0,
-            "freq": 50.0,
-            "proto": "PD-PDO3",
-            "vout": 12.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 264.0,
-            "freq": 50.0,
-            "proto": "PD-PDO4",
-            "vout": 15.0,
-            "iout": 3.0
-        },
-        {
-            "product_type": "充电器",
-            "vin": 264.0,
-            "freq": 50.0,
-            "proto": "PD-PDO5",
+            "proto": "—",
             "vout": 20.0,
-            "iout": 3.25
+            "iout": 5.0
         }
     ]
 }

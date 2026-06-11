@@ -134,6 +134,13 @@ class IT7321(BaseACSource):
         """设置输出电压 (V)。"""
         self.send_command(f"SOUR:VOLT {volts}")
 
+    def set_voltage_nowait(self, volts: float):
+        """
+        设置输出电压（不等 ESR，立即返回）。
+        仅写入命令，不做状态寄存器校验，适用于高速扫描场景。
+        """
+        self._resource.write(f"SOUR:VOLT {volts}")
+
     def set_ac_source_range(self, range_mode: str):
         """
         设置交流源档位。
@@ -155,6 +162,13 @@ class IT7321(BaseACSource):
     def set_frequency(self, hz: float):
         """设置输出频率 (Hz)。"""
         self.send_command(f"SOUR:FREQ {hz}")
+
+    def set_frequency_nowait(self, hz: float):
+        """
+        设置输出频率（不等 ESR，立即返回）。
+        仅写入命令，不做状态寄存器校验，适用于高速扫描场景。
+        """
+        self._resource.write(f"SOUR:FREQ {hz}")
 
     def measure_voltage(self) -> float:
         """测量输出电压 (V)。"""

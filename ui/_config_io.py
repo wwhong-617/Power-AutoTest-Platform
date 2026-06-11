@@ -205,6 +205,9 @@ def save_config(app, path: str):
         "warmup":      _safe_float(app._warmup_var.get()),
         "onoff_cycle": app._onoff_cycle_var.get(),
         "short_cycle": app._short_cycle_var.get(),
+        "反复调压序列1": app._ramp_seq1_var.get(),
+        "反复调压序列2": app._ramp_seq2_var.get(),
+        "反复调压次数": _safe_float(app._ramp_cycles_var.get()),
     }
 
     test_settings = {
@@ -369,6 +372,9 @@ def load_config(app, path: str):
     app._warmup_var.set(tp.get("warmup", ""))
     app._onoff_cycle_var.set(tp.get("onoff_cycle", ""))
     app._short_cycle_var.set(tp.get("short_cycle", ""))
+    app._ramp_seq1_var.set(tp.get("反复调压序列1", ""))
+    app._ramp_seq2_var.set(tp.get("反复调压序列2", ""))
+    app._ramp_cycles_var.set(str(int(tp.get("反复调压次数", 1))))
 
     # 恢复测试条件到 Treeview（恢复后触发刷新）
     tree = app._cond_tree

@@ -330,6 +330,7 @@ CASE_REGISTRY = {
     "InputEfficiencyTest":     {"module": "test_cases.input_tests.InputEfficiencyTest",     "cn_name": "输入效率测试",           "filter_mode": "passthrough"},
     "InputUltraLightLoadTest": {"module": "test_cases.input_tests.InputUltraLightLoadTest", "cn_name": "输入极轻载功耗测试",      "filter_mode": "passthrough"},
     # output_tests
+    "LimitOutputVoltageRampTest": {"module": "test_cases.limit_tests.LimitOutputVoltageRampTest", "cn_name": "反复调压极限测试",      "filter_mode": "min_vout"},
     "OutputPowerOnOffTest":     {"module": "test_cases.output_tests.OutputPowerOnOffTest",     "cn_name": "输出开关机测试",         "filter_mode": "passthrough"},
     "OutputRiseTimeTest":       {"module": "test_cases.output_tests.OutputRiseTimeTest",       "cn_name": "输出电压上升时间测试",   "filter_mode": "min_vout"},
     "OutputStartupDelayTest":   {"module": "test_cases.output_tests.OutputStartupDelayTest",   "cn_name": "输出开机延迟时间测试",   "filter_mode": "min_vout"},

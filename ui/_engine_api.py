@@ -52,7 +52,7 @@ class EngineAPI:
         # ---- 产品信息 ----
         prod_name = self._prod_name_var.get().strip() or "Unknown"
 
-        def _safe_float(val, default):
+        def _safe_float(val, default=None):
             """尝试将字符串转为 float，失败时返回默认值。"""
             try:
                 return float(val)
@@ -76,6 +76,7 @@ class EngineAPI:
             "输出测试": "output_tests",
             "保护测试": "protection_tests",
             "协议测试": "protocol_tests",
+            "极限测试": "limit_tests",
         }
         test_cases_config = {}
         for cn in checked_cases:
@@ -122,6 +123,9 @@ class EngineAPI:
             "warmup":      self._warmup_var.get(),
             "onoff_cycle": self._onoff_cycle_var.get(),
             "short_cycle": self._short_cycle_var.get(),
+            "反复调压序列1": self._ramp_seq1_var.get(),
+            "反复调压序列2": self._ramp_seq2_var.get(),
+            "反复调压次数": _safe_float(self._ramp_cycles_var.get()),
         }
 
         return {
@@ -142,6 +146,19 @@ class EngineAPI:
                 "lv_power": self._lv_power_var.get(),
                 "specs_v2": build_specs_flat(self._spec_vars, {}),
                 "protection_logic_v2": build_protection_flat(self._prot_vars, {}),
+                # 协议档位配置（qc/pd/ufcs）
+                "qc": {
+                    label: {"enabled": v["check"].get(), "value": v["entry"].get()}
+                    for label, v in getattr(self, "_qc_vars", {}).items()
+                },
+                "pd": {
+                    label: {"enabled": v["check"].get(), "value": v["entry"].get()}
+                    for label, v in getattr(self, "_pd_vars", {}).items()
+                },
+                "ufcs": {
+                    label: {"enabled": v["check"].get(), "value": v["entry"].get()}
+                    for label, v in getattr(self, "_ufcs_vars", {}).items()
+                },
             },
             "dut": {
                 "name": prod_name,
